@@ -18,7 +18,7 @@ struct ContentView: View {
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
                     TextField("ALPN token", text: $alpnToken)
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
-                    TextField("Auth token (optional)", text: $authToken)
+                    TextField("Auth token (required)", text: $authToken)
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
                     TextField("Relay URLs (comma-separated, optional)", text: $relayURLs)
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
@@ -37,7 +37,7 @@ struct ContentView: View {
                     Button("Connect") {
                         Task { await vpn.connect(currentSettings()) }
                     }
-                    .disabled(serverNodeID.isEmpty || alpnToken.isEmpty)
+                    .disabled(serverNodeID.isEmpty || alpnToken.isEmpty || authToken.isEmpty)
 
                     Button("Disconnect", role: .destructive) {
                         vpn.disconnect()
