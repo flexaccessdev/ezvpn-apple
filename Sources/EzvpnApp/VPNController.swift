@@ -28,6 +28,8 @@ final class VPNController: ObservableObject {
         var relayURLs: [String]
         /// IPv4 private CIDRs to route through the tunnel (split tunnel).
         var routes: [String]
+        /// IPv6 CIDRs to route through the tunnel (split tunnel).
+        var routes6: [String]
     }
 
     func reload() async {
@@ -58,6 +60,7 @@ final class VPNController: ObservableObject {
                 "auth_token": s.authToken,
                 "relay_urls": s.relayURLs,
                 "routes": s.routes,
+                "routes6": s.routes6,
             ]
 
             mgr.protocolConfiguration = proto

@@ -9,6 +9,8 @@ struct ContentView: View {
     @State private var relayURLs = ""
     // Default split-tunnel routes: RFC1918 private ranges only.
     @State private var routes = "10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16"
+    // IPv6 split-tunnel routes (e.g. the server's ULA prefix). Empty = no IPv6.
+    @State private var routes6 = ""
 
     var body: some View {
         NavigationStack {
@@ -24,7 +26,11 @@ struct ContentView: View {
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
                 }
                 Section("Split tunnel (IPv4 private CIDRs)") {
-                    TextField("Routes (comma-separated)", text: $routes)
+                    TextField("IPv4 routes (comma-separated, optional)", text: $routes)
+                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                }
+                Section("Split tunnel (IPv6 CIDRs)") {
+                    TextField("IPv6 routes (comma-separated, optional)", text: $routes6)
                         .autocorrectionDisabled().textInputAutocapitalization(.never)
                 }
                 Section("Status") {
@@ -54,7 +60,8 @@ struct ContentView: View {
             alpnToken: alpnToken.trimmingCharacters(in: .whitespaces),
             authToken: authToken.trimmingCharacters(in: .whitespaces),
             relayURLs: splitCSV(relayURLs),
-            routes: splitCSV(routes)
+            routes: splitCSV(routes),
+            routes6: splitCSV(routes6)
         )
     }
 

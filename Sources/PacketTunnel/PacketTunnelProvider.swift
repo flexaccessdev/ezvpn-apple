@@ -30,14 +30,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let authToken = conf["auth_token"] as? String
         let relayURLs = conf["relay_urls"] as? [String] ?? []
         let routes = conf["routes"] as? [String] ?? []
+        let routes6 = conf["routes6"] as? [String] ?? []
 
-        // Build the FFI config JSON.
+        // Build the FFI config JSON. routes/routes6 are forwarded so the core can
+        // compute which server underlay addresses overlap and must be excluded.
         let configDict: [String: Any] = [
             "server_node_id": serverNodeID,
             "alpn_token": alpnToken,
             "auth_token": (authToken?.isEmpty == false) ? authToken! : NSNull(),
             "relay_urls": relayURLs,
             "relay_only": false,
+            "routes": routes,
+            "routes6": routes6,
         ]
         guard
             let configData = try? JSONSerialization.data(withJSONObject: configDict),
@@ -65,9 +69,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         guard
             let data = resultStr.data(using: .utf8),
             let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let ip = obj["assigned_ip"] as? String,
-            let mask = obj["netmask"] as? String,
-            let gateway = obj["gateway"] as? String,
             let mtu = obj["mtu"] as? Int
         else {
             ezvpn_stop(handle)
@@ -76,13 +77,51 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             return
         }
 
+        // Per-family fields are present only for assigned families (null otherwise).
+        let v4ip = obj["assigned_ip"] as? String
+        let v4mask = obj["netmask"] as? String
+        let v4gw = obj["gateway"] as? String
+        let v6ip = obj["assigned_ip6"] as? String
+        let v6prefix = obj["prefix_len6"] as? Int
+        let v6gw = obj["gateway6"] as? String
+        let excluded = obj["excluded_routes"] as? [String] ?? []
+        let excluded6 = obj["excluded_routes6"] as? [String] ?? []
+
+        // Tunnel needs a remote-address label; any assigned gateway works.
+        guard let remoteAddr = v4gw ?? v6gw else {
+            ezvpn_stop(handle)
+            self.handle = nil
+            completionHandler(Self.error("no gateway in network config: \(resultStr)"))
+            return
+        }
+
         // Configure the tunnel interface. Split tunnel: only the configured
-        // private prefixes are routed through us; everything else stays off.
-        let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: gateway)
-        let ipv4 = NEIPv4Settings(addresses: [ip], subnetMasks: [mask])
-        let included = routes.compactMap { Self.ipv4Route($0) }
-        ipv4.includedRoutes = included.isEmpty ? [NEIPv4Route.default()] : included
-        settings.ipv4Settings = ipv4
+        // prefixes are routed through us; overlapping server underlay addresses
+        // are carved back out via excludedRoutes; everything else stays off.
+        let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: remoteAddr)
+
+        // Both route lists are optional: an assigned family with no routes simply
+        // assigns its address and tunnels nothing. Routes for a family the server
+        // did not assign can't be applied — warn so it isn't silently ignored.
+        if let v4ip, let v4mask {
+            let ipv4 = NEIPv4Settings(addresses: [v4ip], subnetMasks: [v4mask])
+            ipv4.includedRoutes = routes.compactMap { Self.ipv4Route($0) }
+            ipv4.excludedRoutes = excluded.compactMap { Self.ipv4Route($0) }
+            settings.ipv4Settings = ipv4
+        } else if !routes.isEmpty {
+            os_log("ignoring %d IPv4 route(s): server assigned no IPv4 address",
+                   log: log, type: .info, routes.count)
+        }
+        if let v6ip, let v6prefix {
+            let ipv6 = NEIPv6Settings(
+                addresses: [v6ip], networkPrefixLengths: [NSNumber(value: v6prefix)])
+            ipv6.includedRoutes = routes6.compactMap { Self.ipv6Route($0) }
+            ipv6.excludedRoutes = excluded6.compactMap { Self.ipv6Route($0) }
+            settings.ipv6Settings = ipv6
+        } else if !routes6.isEmpty {
+            os_log("ignoring %d IPv6 route(s): server assigned no IPv6 address",
+                   log: log, type: .info, routes6.count)
+        }
         settings.mtu = NSNumber(value: mtu)
 
         setTunnelNetworkSettings(settings) { [weak self] error in
@@ -146,6 +185,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private static func ipv4Mask(_ prefix: Int) -> String {
         let m: UInt32 = prefix == 0 ? 0 : (~UInt32(0) << (32 - prefix))
         return "\((m >> 24) & 0xff).\((m >> 16) & 0xff).\((m >> 8) & 0xff).\(m & 0xff)"
+    }
+
+    /// Convert "fd00::/64" into an NEIPv6Route.
+    private static func ipv6Route(_ cidr: String) -> NEIPv6Route? {
+        let parts = cidr.split(separator: "/")
+        guard parts.count == 2, let prefix = Int(parts[1]), (0...128).contains(prefix) else {
+            return nil
+        }
+        return NEIPv6Route(
+            destinationAddress: String(parts[0]), networkPrefixLength: NSNumber(value: prefix))
     }
 
     /// Locate the `utun` file descriptor the OS created for this tunnel.
