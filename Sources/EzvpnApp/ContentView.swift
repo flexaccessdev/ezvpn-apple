@@ -131,10 +131,10 @@ struct ContentView: View {
             }
             .navigationTitle("ezvpn")
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: vpn.savedSettings) { saved in
+            .onChange(of: vpn.savedSettings) { _, saved in
                 prefillIfNeeded(from: saved)
             }
-            .onChange(of: scenePhase) { phase in
+            .onChange(of: scenePhase) { _, phase in
                 if phase == .active {
                     Task { await vpn.reload() }
                 }
