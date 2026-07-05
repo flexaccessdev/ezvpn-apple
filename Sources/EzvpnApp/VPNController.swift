@@ -20,6 +20,11 @@ final class VPNController: ObservableObject {
     @Published private(set) var status: NEVPNStatus = .invalid
     /// When the current session connected, for a "connected since" display.
     @Published private(set) var connectedDate: Date?
+    /// Whether the saved configuration has Connect On Demand armed. True even
+    /// while the tunnel itself is down (e.g. on Wi-Fi, where the rules keep it
+    /// disconnected) — the UI shows this as a distinct "waiting" state, like
+    /// the WireGuard app does.
+    @Published private(set) var isOnDemandEnabled = false
     /// The configuration last saved to VPN preferences, used to prefill the
     /// form on launch so the UI reflects what the system will actually run.
     @Published private(set) var savedSettings: Settings?
@@ -142,6 +147,7 @@ final class VPNController: ObservableObject {
     /// Pull `status` from the system connection. Also surfaces the tunnel's own
     /// failure reason when a session ends without the user asking it to.
     private func syncStatus() {
+        isOnDemandEnabled = manager?.isOnDemandEnabled ?? false
         guard let conn = manager?.connection else {
             status = .invalid
             connectedDate = nil
