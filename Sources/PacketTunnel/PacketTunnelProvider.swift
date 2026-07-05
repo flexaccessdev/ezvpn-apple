@@ -98,12 +98,15 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // are carved back out via excludedRoutes; everything else stays off.
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: remoteAddr)
 
-        // Both route lists are optional: an assigned family with no routes simply
-        // assigns its address and tunnels nothing. Routes for a family the server
-        // did not assign can't be applied — warn so it isn't silently ignored.
+        // User route lists are optional: the tunnel's own subnet (derived from the
+        // assigned address + mask) is always routed, so the server side of the
+        // tunnel (e.g. 10.124.0.1) is reachable with no configuration. Extra
+        // routes widen the split tunnel. Routes for a family the server did not
+        // assign can't be applied — warn so it isn't silently ignored.
         if let v4ip, let v4mask {
             let ipv4 = NEIPv4Settings(addresses: [v4ip], subnetMasks: [v4mask])
-            ipv4.includedRoutes = routes.compactMap { Self.ipv4Route($0) }
+            ipv4.includedRoutes = Self.ipv4InterfaceRoutes(ip: v4ip, mask: v4mask, gateway: v4gw)
+                + routes.compactMap { Self.ipv4Route($0) }
             ipv4.excludedRoutes = excluded.compactMap { Self.ipv4Route($0) }
             settings.ipv4Settings = ipv4
         } else if !routes.isEmpty {
@@ -113,7 +116,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         if let v6ip, let v6prefix {
             let ipv6 = NEIPv6Settings(
                 addresses: [v6ip], networkPrefixLengths: [NSNumber(value: v6prefix)])
-            ipv6.includedRoutes = routes6.compactMap { Self.ipv6Route($0) }
+            ipv6.includedRoutes = Self.ipv6InterfaceRoutes(ip: v6ip, prefix: v6prefix, gateway: v6gw)
+                + routes6.compactMap { Self.ipv6Route($0) }
             ipv6.excludedRoutes = excluded6.compactMap { Self.ipv6Route($0) }
             settings.ipv6Settings = ipv6
         } else if !routes6.isEmpty {
@@ -169,6 +173,73 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private static func error(_ message: String) -> NSError {
         NSError(domain: "com.example.ezvpn", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: message])
+    }
+
+    /// Routes implied by the interface assignment itself: the on-link subnet of
+    /// the assigned address (so the server end of the tunnel is reachable with
+    /// no user-configured routes), plus a host route to the gateway for the
+    /// point-to-point case where the gateway sits outside that subnet.
+    private static func ipv4InterfaceRoutes(
+        ip: String, mask: String, gateway: String?
+    ) -> [NEIPv4Route] {
+        guard let ipBits = ipv4Bits(ip), let maskBits = ipv4Bits(mask) else { return [] }
+        var routes = [NEIPv4Route(
+            destinationAddress: ipv4String(ipBits & maskBits), subnetMask: mask)]
+        if let gateway, let gwBits = ipv4Bits(gateway), gwBits & maskBits != ipBits & maskBits {
+            routes.append(NEIPv4Route(
+                destinationAddress: gateway, subnetMask: "255.255.255.255"))
+        }
+        return routes
+    }
+
+    /// IPv6 mirror of `ipv4InterfaceRoutes`.
+    private static func ipv6InterfaceRoutes(
+        ip: String, prefix: Int, gateway: String?
+    ) -> [NEIPv6Route] {
+        guard let network = ipv6Network(ip, prefix: prefix) else { return [] }
+        var routes = [NEIPv6Route(
+            destinationAddress: network, networkPrefixLength: NSNumber(value: prefix))]
+        if let gateway, ipv6Network(gateway, prefix: prefix) != network {
+            routes.append(NEIPv6Route(
+                destinationAddress: gateway, networkPrefixLength: 128))
+        }
+        return routes
+    }
+
+    /// Parse a dotted quad into its 32-bit value.
+    private static func ipv4Bits(_ s: String) -> UInt32? {
+        let parts = s.split(separator: ".")
+        guard parts.count == 4 else { return nil }
+        var value: UInt32 = 0
+        for part in parts {
+            guard let byte = UInt8(part) else { return nil }
+            value = (value << 8) | UInt32(byte)
+        }
+        return value
+    }
+
+    private static func ipv4String(_ bits: UInt32) -> String {
+        "\((bits >> 24) & 0xff).\((bits >> 16) & 0xff).\((bits >> 8) & 0xff).\(bits & 0xff)"
+    }
+
+    /// The network address of `ip` under `prefix` (host bits zeroed), or nil if
+    /// `ip` doesn't parse.
+    private static func ipv6Network(_ ip: String, prefix: Int) -> String? {
+        var addr = in6_addr()
+        guard inet_pton(AF_INET6, ip, &addr) == 1 else { return nil }
+        withUnsafeMutableBytes(of: &addr) { raw in
+            for i in 0..<16 {
+                let bitStart = i * 8
+                if bitStart >= prefix {
+                    raw[i] = 0
+                } else if bitStart + 8 > prefix {
+                    raw[i] &= UInt8(truncatingIfNeeded: 0xff << (8 - (prefix - bitStart)))
+                }
+            }
+        }
+        var buf = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+        guard inet_ntop(AF_INET6, &addr, &buf, socklen_t(buf.count)) != nil else { return nil }
+        return String(cString: buf)
     }
 
     /// Convert "10.0.0.0/8" into an NEIPv4Route.

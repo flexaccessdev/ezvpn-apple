@@ -58,11 +58,15 @@ struct ContentView: View {
                 }
                 .disabled(isActive)
 
-                Section("Split tunnel (IPv4 private CIDRs)") {
+                Section {
                     LabeledField("IPv4 routes", hint: "comma-separated, optional") {
                         TextField("", text: $routes)
                             .autocorrectionDisabled().textInputAutocapitalization(.never)
                     }
+                } header: {
+                    Text("Split tunnel (IPv4 private CIDRs)")
+                } footer: {
+                    Text("The tunnel's own subnet is always routed automatically; add CIDRs here to route more.")
                 }
                 .disabled(isActive)
 

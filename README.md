@@ -17,9 +17,7 @@ into a `NEPacketTunnelProvider`. The Rust side does the iroh connect + handshake
   never captures the iroh underlay, so it isn't needed).
 - ❌ No App Store / TestFlight setup. No simulator (a Packet Tunnel Provider
   only runs on a real device).
-- ⚠️ Ephemeral iroh identity per session, so the server may assign a different
-  VPN IP on each connect.
-
+  
 ## Prerequisites
 
 - **Paid Apple Developer account.** The Network Extension (`packet-tunnel-provider`)
