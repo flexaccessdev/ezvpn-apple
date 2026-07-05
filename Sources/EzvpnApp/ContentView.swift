@@ -104,7 +104,7 @@ struct ContentView: View {
                                 ? "Reconnecting…" : "Connecting…")
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Button("Cancel") { vpn.disconnect() }
+                            Button("Cancel") { Task { await vpn.disconnect() } }
                                 .buttonStyle(.bordered)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -112,7 +112,7 @@ struct ContentView: View {
                         .listRowBackground(Color.clear)
                     } else if isActive {
                         Button("Disconnect", role: .destructive) {
-                            vpn.disconnect()
+                            Task { await vpn.disconnect() }
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.large)

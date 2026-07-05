@@ -96,6 +96,18 @@ final class VPNController: ObservableObject {
             mgr.localizedDescription = "ezvpn POC"
             mgr.isEnabled = true
 
+            // On-demand, cellular only (v1, hardcoded — same shape as the
+            // WireGuard app's "cellular only" option): the OS brings the
+            // tunnel up whenever cellular is the active interface and keeps
+            // it down on everything else. Rules are evaluated in order,
+            // first match wins.
+            let connectOnCellular = NEOnDemandRuleConnect()
+            connectOnCellular.interfaceTypeMatch = .cellular
+            let disconnectOtherwise = NEOnDemandRuleDisconnect()
+            disconnectOtherwise.interfaceTypeMatch = .any
+            mgr.onDemandRules = [connectOnCellular, disconnectOtherwise]
+            mgr.isOnDemandEnabled = true
+
             try await mgr.saveToPreferences()
             // Re-load so the saved config is fully materialized before starting.
             try await mgr.loadFromPreferences()
@@ -109,8 +121,21 @@ final class VPNController: ObservableObject {
         }
     }
 
-    func disconnect() {
-        manager?.connection.stopVPNTunnel()
+    /// Stop the tunnel. On-demand is switched off first — otherwise the OS
+    /// would restart the tunnel immediately while still on cellular. It is
+    /// re-enabled on the next `connect(_:)`.
+    func disconnect() async {
+        guard let mgr = manager else { return }
+        if mgr.isOnDemandEnabled {
+            do {
+                mgr.isOnDemandEnabled = false
+                try await mgr.saveToPreferences()
+            } catch {
+                lastError = "disconnect failed: \(error.localizedDescription)"
+                return
+            }
+        }
+        mgr.connection.stopVPNTunnel()
         syncStatus()
     }
 
