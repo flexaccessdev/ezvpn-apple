@@ -109,6 +109,29 @@ struct ContentView: View {
                     }
                 }
 
+                // Live routing state reported by the tunnel process itself
+                // (via the runtime-configuration app message), so what's on
+                // screen is what the interface actually got — the main thing
+                // to check when a destination is unreachable.
+                if vpn.status == .connected, let info = vpn.runtimeInfo {
+                    Section {
+                        if let ip = info.assignedIP {
+                            RouteRow(title: "Assigned IPv4", values: [ip])
+                        }
+                        if let ip6 = info.assignedIP6 {
+                            RouteRow(title: "Assigned IPv6", values: [ip6])
+                        }
+                        RouteRow(title: "Tunnel routes (IPv4)", values: info.includedRoutes)
+                        RouteRow(title: "Tunnel routes (IPv6)", values: info.includedRoutes6)
+                        RouteRow(title: "Bypass routes (IPv4)", values: info.bypassRoutes)
+                        RouteRow(title: "Bypass routes (IPv6)", values: info.bypassRoutes6)
+                    } header: {
+                        Text("Active routes")
+                    } footer: {
+                        Text("Bypass routes are server underlay/relay addresses excluded from the tunnel so its own transport is never captured. Pull to refresh.")
+                    }
+                }
+
                 Section {
                     if isConnecting {
                         HStack(spacing: 12) {
@@ -149,6 +172,10 @@ struct ContentView: View {
             }
             .navigationTitle("ezvpn")
             .scrollDismissesKeyboard(.interactively)
+            .refreshable {
+                await vpn.reload()
+                await vpn.refreshRuntimeInfo()
+            }
             .onChange(of: vpn.savedSettings) { _, saved in
                 prefillIfNeeded(from: saved)
             }
@@ -217,6 +244,32 @@ extension NEVPNStatus {
         case .invalid, .disconnected: return Color(.systemGray3)
         @unknown default: return Color(.systemGray3)
         }
+    }
+}
+
+/// One row of the Active-routes debug section: a caption title over the CIDR
+/// list, monospaced, one per line; "none" when the list is empty (an empty
+/// bypass list is itself a useful signal — nothing was carved out).
+private struct RouteRow: View {
+    let title: String
+    let values: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if values.isEmpty {
+                Text("none")
+                    .font(.footnote)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Text(values.joined(separator: "\n"))
+                    .font(.footnote.monospaced())
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(.vertical, 2)
     }
 }
 
