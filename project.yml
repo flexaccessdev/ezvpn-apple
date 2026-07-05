@@ -32,6 +32,21 @@ settings:
     TARGETED_DEVICE_FAMILY: "1,2"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
+# One explicit shared scheme so Xcode runs the app by default instead of
+# auto-creating per-target schemes and possibly picking PacketTunnel (which
+# can't run on its own — the extension is launched via the host app).
+schemes:
+  EzvpnApp:
+    build:
+      targets:
+        EzvpnApp: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    archive:
+      config: Release
+
 targets:
   EzvpnApp:
     type: application
