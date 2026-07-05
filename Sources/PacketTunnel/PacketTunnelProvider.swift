@@ -11,6 +11,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private let log = OSLog(subsystem: "com.example.ezvpn.PacketTunnel", category: "tunnel")
     private var handle: OpaquePointer?
 
+    /// Serializes backend teardown and runtime-config queries, mirroring
+    /// WireGuardAdapter's private work queue: `stopTunnel` completes only
+    /// after `ezvpn_stop` has actually returned, and never blocks the
+    /// provider's calling queue while the Rust side shuts down.
+    private let workQueue = DispatchQueue(label: "com.example.ezvpn.PacketTunnel.workQueue")
+
+    /// What was actually applied to the interface (assigned addresses, tunnel
+    /// routes, bypass routes, MTU), kept so the app can query it over
+    /// `handleAppMessage` — the same runtime-configuration mechanism the
+    /// WireGuard app uses. Accessed on `workQueue` only.
+    private var runtimeConfig: [String: Any]?
+
     override func startTunnel(
         options: [String: NSObject]?,
         completionHandler: @escaping (Error?) -> Void
@@ -126,6 +138,21 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         settings.mtu = NSNumber(value: mtu)
 
+        // Snapshot of what is being applied, for the app's debug UI (served
+        // via handleAppMessage). Built from the settings object itself so it
+        // reports the routes actually installed, not the ones requested.
+        var runtime: [String: Any] = ["mtu": mtu]
+        if let ipv4 = settings.ipv4Settings {
+            runtime["assigned_ip"] = ipv4.addresses.first
+            runtime["included_routes"] = (ipv4.includedRoutes ?? []).map(Self.cidrString)
+            runtime["bypass_routes"] = (ipv4.excludedRoutes ?? []).map(Self.cidrString)
+        }
+        if let ipv6 = settings.ipv6Settings {
+            runtime["assigned_ip6"] = ipv6.addresses.first
+            runtime["included_routes6"] = (ipv6.includedRoutes ?? []).map(Self.cidrString)
+            runtime["bypass_routes6"] = (ipv6.excludedRoutes ?? []).map(Self.cidrString)
+        }
+
         setTunnelNetworkSettings(settings) { [weak self] error in
             guard let self else { return }
             if let error {
@@ -152,6 +179,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 return
             }
             os_log("tunnel running on fd %d", log: self.log, type: .info, fd)
+            self.workQueue.async { self.runtimeConfig = runtime }
             completionHandler(nil)
         }
     }
@@ -161,11 +189,43 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         completionHandler: @escaping () -> Void
     ) {
         os_log("stopTunnel: %d", log: log, type: .info, reason.rawValue)
-        if let handle {
-            ezvpn_stop(handle)
-            self.handle = nil
+        // Same shape as wireguard-apple's stopTunnel: stop the backend on the
+        // work queue and signal completion only once it has returned, so the
+        // OS removes the utun and its routes only after the data plane is
+        // actually dead — not while the Rust side may still be writing.
+        workQueue.async { [self] in
+            if let handle {
+                ezvpn_stop(handle)
+                self.handle = nil
+            }
+            runtimeConfig = nil
+            os_log("tunnel stopped", log: log, type: .info)
+            completionHandler()
         }
-        completionHandler()
+    }
+
+    /// App <-> extension query channel, using the WireGuard app's protocol:
+    /// a single byte 0 means "get runtime configuration"; the reply is the
+    /// applied network config as JSON, nil when no tunnel is running.
+    override func handleAppMessage(
+        _ messageData: Data,
+        completionHandler: ((Data?) -> Void)? = nil
+    ) {
+        guard let completionHandler else { return }
+        guard messageData.count == 1, messageData[0] == 0 else {
+            completionHandler(nil)
+            return
+        }
+        workQueue.async { [self] in
+            guard
+                let runtimeConfig,
+                let data = try? JSONSerialization.data(withJSONObject: runtimeConfig)
+            else {
+                completionHandler(nil)
+                return
+            }
+            completionHandler(data)
+        }
     }
 
     // MARK: - Helpers
@@ -240,6 +300,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         var buf = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
         guard inet_ntop(AF_INET6, &addr, &buf, socklen_t(buf.count)) != nil else { return nil }
         return String(cString: buf)
+    }
+
+    /// Render an installed route back to CIDR text for the debug UI.
+    private static func cidrString(_ route: NEIPv4Route) -> String {
+        let prefix = ipv4Bits(route.destinationSubnetMask)?.nonzeroBitCount ?? 32
+        return "\(route.destinationAddress)/\(prefix)"
+    }
+
+    private static func cidrString(_ route: NEIPv6Route) -> String {
+        "\(route.destinationAddress)/\(route.destinationNetworkPrefixLength)"
     }
 
     /// Convert "10.0.0.0/8" into an NEIPv4Route.

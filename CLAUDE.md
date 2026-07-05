@@ -1,0 +1,4 @@
+- strict no backward compatibility
+- make change on sibling project ../ezvpn, which is the library used by this project, if needed 
+- run the cd ../ezvpn ./build-ios.sh release if any changes happen on the sibling project to rebuild the vendored library
+- regenerate the project from project.yml after code changes (`xcodegen generate`)

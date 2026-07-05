@@ -20,6 +20,14 @@ into a `NEPacketTunnelProvider`. The Rust side does the iroh connect + handshake
   from the tunnel (`excludedRoutes`), so the transport never self-captures.
   Static (handshake-time) only — the server's mid-session address publications
   are not re-applied.
+- ✅ On-demand "cellular only", using the same rule pair as the WireGuard
+  app's non-Wi-Fi option: connect when cellular is active, disconnect when
+  Wi-Fi is. Tunnel teardown also follows wireguard-apple: `stopTunnel`
+  completes only after the Rust data plane has actually stopped.
+- ✅ Debug: while connected, the app shows the *applied* interface state —
+  assigned addresses, tunnel routes, and the active bypass (excluded) routes —
+  queried live from the tunnel process over the WireGuard-style
+  runtime-configuration app message (single byte `0`).
 - ❌ No App Store / TestFlight setup. No simulator (a Packet Tunnel Provider
   only runs on a real device).
   

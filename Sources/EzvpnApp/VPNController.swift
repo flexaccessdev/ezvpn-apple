@@ -28,6 +28,10 @@ final class VPNController: ObservableObject {
     /// The configuration last saved to VPN preferences, used to prefill the
     /// form on launch so the UI reflects what the system will actually run.
     @Published private(set) var savedSettings: Settings?
+    /// Live state reported by the running tunnel process (assigned addresses,
+    /// tunnel routes, bypass routes) — what was actually applied to the
+    /// interface, not what was requested. nil while the tunnel is down.
+    @Published private(set) var runtimeInfo: RuntimeInfo?
     @Published var lastError: String?
 
     private var manager: NETunnelProviderManager?
@@ -42,6 +46,21 @@ final class VPNController: ObservableObject {
         var routes: [String]
         /// IPv6 CIDRs to route through the tunnel (split tunnel).
         var routes6: [String]
+    }
+
+    /// Decoded reply to the runtime-configuration app message (see
+    /// `PacketTunnelProvider.handleAppMessage`).
+    struct RuntimeInfo: Equatable {
+        var assignedIP: String?
+        var assignedIP6: String?
+        var mtu: Int?
+        /// CIDRs routed through the tunnel, per family.
+        var includedRoutes: [String]
+        var includedRoutes6: [String]
+        /// Server underlay/relay CIDRs carved back out of the tunnel
+        /// (`excludedRoutes`) so the transport never self-captures.
+        var bypassRoutes: [String]
+        var bypassRoutes6: [String]
     }
 
     init() {
@@ -101,16 +120,17 @@ final class VPNController: ObservableObject {
             mgr.localizedDescription = "ezvpn POC"
             mgr.isEnabled = true
 
-            // On-demand, cellular only (v1, hardcoded — same shape as the
-            // WireGuard app's "cellular only" option): the OS brings the
-            // tunnel up whenever cellular is the active interface and keeps
-            // it down on everything else. Rules are evaluated in order,
-            // first match wins.
+            // On-demand, cellular only (v1, hardcoded). Exactly the rule pair
+            // the WireGuard app uses for its "non-Wi-Fi only" option:
+            // connect when cellular is the active interface, disconnect when
+            // Wi-Fi is. Rules are evaluated in order, first match wins; on an
+            // interface matching neither the tunnel is left as it is, rather
+            // than force-disconnected by a catch-all.
             let connectOnCellular = NEOnDemandRuleConnect()
             connectOnCellular.interfaceTypeMatch = .cellular
-            let disconnectOtherwise = NEOnDemandRuleDisconnect()
-            disconnectOtherwise.interfaceTypeMatch = .any
-            mgr.onDemandRules = [connectOnCellular, disconnectOtherwise]
+            let disconnectOnWiFi = NEOnDemandRuleDisconnect()
+            disconnectOnWiFi.interfaceTypeMatch = .wiFi
+            mgr.onDemandRules = [connectOnCellular, disconnectOnWiFi]
             mgr.isOnDemandEnabled = true
 
             try await mgr.saveToPreferences()
@@ -157,6 +177,15 @@ final class VPNController: ObservableObject {
         status = conn.status
         connectedDate = conn.connectedDate
 
+        // Runtime info only exists while the tunnel process runs. Refresh on
+        // every sync while connected (foreground returns land here too, where
+        // the tunnel may have reconnected with different bypass routes).
+        if status == .connected {
+            Task { await refreshRuntimeInfo() }
+        } else {
+            runtimeInfo = nil
+        }
+
         // A connect attempt (or live session) that lands back at .disconnected
         // failed on the tunnel side; ask the system why.
         let wasActive = previous == .connecting || previous == .connected || previous == .reasserting
@@ -168,6 +197,43 @@ final class VPNController: ObservableObject {
                 }
             }
         }
+    }
+
+    /// Ask the running tunnel for its applied network config, using the
+    /// WireGuard app's protocol: send the single byte 0, get JSON back.
+    func refreshRuntimeInfo() async {
+        guard
+            status == .connected,
+            let session = manager?.connection as? NETunnelProviderSession
+        else {
+            runtimeInfo = nil
+            return
+        }
+        let reply: Data? = await withCheckedContinuation { continuation in
+            do {
+                try session.sendProviderMessage(Data([0])) { data in
+                    continuation.resume(returning: data)
+                }
+            } catch {
+                continuation.resume(returning: nil)
+            }
+        }
+        guard
+            let reply,
+            let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any]
+        else {
+            runtimeInfo = nil
+            return
+        }
+        runtimeInfo = RuntimeInfo(
+            assignedIP: obj["assigned_ip"] as? String,
+            assignedIP6: obj["assigned_ip6"] as? String,
+            mtu: obj["mtu"] as? Int,
+            includedRoutes: obj["included_routes"] as? [String] ?? [],
+            includedRoutes6: obj["included_routes6"] as? [String] ?? [],
+            bypassRoutes: obj["bypass_routes"] as? [String] ?? [],
+            bypassRoutes6: obj["bypass_routes6"] as? [String] ?? []
+        )
     }
 
     private static func settings(from manager: NETunnelProviderManager) -> Settings? {
