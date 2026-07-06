@@ -20,11 +20,6 @@ final class VPNController: ObservableObject {
     @Published private(set) var status: NEVPNStatus = .invalid
     /// When the current session connected, for a "connected since" display.
     @Published private(set) var connectedDate: Date?
-    /// Whether the saved configuration has Connect On Demand armed. True even
-    /// while the tunnel itself is down (e.g. on Wi-Fi, where the rules keep it
-    /// disconnected) — the UI shows this as a distinct "waiting" state, like
-    /// the WireGuard app does.
-    @Published private(set) var isOnDemandEnabled = false
     /// The configuration last saved to VPN preferences, used to prefill the
     /// form on launch so the UI reflects what the system will actually run.
     @Published private(set) var savedSettings: Settings?
@@ -120,19 +115,6 @@ final class VPNController: ObservableObject {
             mgr.localizedDescription = "ezvpn POC"
             mgr.isEnabled = true
 
-            // On-demand, cellular only (v1, hardcoded). Exactly the rule pair
-            // the WireGuard app uses for its "non-Wi-Fi only" option:
-            // connect when cellular is the active interface, disconnect when
-            // Wi-Fi is. Rules are evaluated in order, first match wins; on an
-            // interface matching neither the tunnel is left as it is, rather
-            // than force-disconnected by a catch-all.
-            let connectOnCellular = NEOnDemandRuleConnect()
-            connectOnCellular.interfaceTypeMatch = .cellular
-            let disconnectOnWiFi = NEOnDemandRuleDisconnect()
-            disconnectOnWiFi.interfaceTypeMatch = .wiFi
-            mgr.onDemandRules = [connectOnCellular, disconnectOnWiFi]
-            mgr.isOnDemandEnabled = true
-
             try await mgr.saveToPreferences()
             // Re-load so the saved config is fully materialized before starting.
             try await mgr.loadFromPreferences()
@@ -146,20 +128,9 @@ final class VPNController: ObservableObject {
         }
     }
 
-    /// Stop the tunnel. On-demand is switched off first — otherwise the OS
-    /// would restart the tunnel immediately while still on cellular. It is
-    /// re-enabled on the next `connect(_:)`.
+    /// Stop the tunnel.
     func disconnect() async {
         guard let mgr = manager else { return }
-        if mgr.isOnDemandEnabled {
-            do {
-                mgr.isOnDemandEnabled = false
-                try await mgr.saveToPreferences()
-            } catch {
-                lastError = "disconnect failed: \(error.localizedDescription)"
-                return
-            }
-        }
         mgr.connection.stopVPNTunnel()
         syncStatus()
     }
@@ -167,7 +138,6 @@ final class VPNController: ObservableObject {
     /// Pull `status` from the system connection. Also surfaces the tunnel's own
     /// failure reason when a session ends without the user asking it to.
     private func syncStatus() {
-        isOnDemandEnabled = manager?.isOnDemandEnabled ?? false
         guard let conn = manager?.connection else {
             status = .invalid
             connectedDate = nil

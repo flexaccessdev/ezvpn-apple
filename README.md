@@ -21,10 +21,8 @@ The Rust side does the iroh connect + handshake + datagram loop; iOS owns the
   from the tunnel (`excludedRoutes`), so the transport never self-captures.
   Static (handshake-time) only — the server's mid-session address publications
   are not re-applied.
-- ✅ On-demand "cellular only", using the same rule pair as the WireGuard
-  app's non-Wi-Fi option: connect when cellular is active, disconnect when
-  Wi-Fi is. Tunnel teardown also follows wireguard-apple: `stopTunnel`
-  completes only after the Rust data plane has actually stopped.
+- ✅ Simple manual connect/disconnect. Tunnel teardown follows wireguard-apple:
+  `stopTunnel` completes only after the Rust data plane has actually stopped.
 - ✅ Debug: while connected, the app shows the *applied* interface state —
   assigned addresses, tunnel routes, and the active bypass (excluded) routes —
   queried live from the tunnel process over the WireGuard-style

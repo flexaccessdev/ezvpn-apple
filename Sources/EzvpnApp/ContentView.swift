@@ -23,20 +23,9 @@ struct ContentView: View {
         vpn.status == .connecting || vpn.status == .reasserting
     }
 
-    /// On-demand is armed but the tunnel is currently down (e.g. on Wi-Fi,
-    /// where the rules keep it disconnected). The system will start it by
-    /// itself once cellular becomes active — shown as its own yellow
-    /// "waiting" state, like the WireGuard app.
-    private var isOnDemandWaiting: Bool {
-        vpn.isOnDemandEnabled && vpn.status == .disconnected
-    }
-
     /// The tunnel session is doing anything at all — the form describes the
     /// running configuration, so editing is locked until it fully stops.
-    /// On-demand waiting counts: the config is armed even though the tunnel
-    /// is down, so the way out is Disconnect, not editing.
     private var isActive: Bool {
-        if isOnDemandWaiting { return true }
         switch vpn.status {
         case .connected, .connecting, .reasserting, .disconnecting: return true
         case .invalid, .disconnected: return false
@@ -92,11 +81,9 @@ struct ContentView: View {
                 Section("Status") {
                     HStack(spacing: 10) {
                         Circle()
-                            .fill(isOnDemandWaiting ? .yellow : vpn.status.indicatorColor)
+                            .fill(vpn.status.indicatorColor)
                             .frame(width: 10, height: 10)
-                        Text(isOnDemandWaiting
-                            ? "On demand — waiting for cellular"
-                            : vpn.status.displayText)
+                        Text(vpn.status.displayText)
                         Spacer()
                         if vpn.status == .connected, let since = vpn.connectedDate {
                             Text(since, style: .relative)
@@ -147,8 +134,7 @@ struct ContentView: View {
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
                     } else if isActive {
-                        Button(isOnDemandWaiting ? "Turn Off" : "Disconnect",
-                               role: .destructive) {
+                        Button("Disconnect", role: .destructive) {
                             Task { await vpn.disconnect() }
                         }
                         .buttonStyle(.bordered)
