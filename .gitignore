@@ -14,3 +14,5 @@ build/
 *.xcuserstate
 xcuserdata/
 .DS_Store
+
+tmp/
