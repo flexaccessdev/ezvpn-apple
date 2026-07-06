@@ -1,4 +1,6 @@
 - strict no backward compatibility
-- make change on sibling project ../ezvpn, which is the library used by this project, if needed 
-- run the cd ../ezvpn ./build-ios.sh release if any changes happen on the sibling project to rebuild the vendored library
+- make change on sibling project ../ezvpn, which is the library used by this project, if needed
+- the Rust artifact (libezvpn.xcframework) is delivered via a local Swift package `Packages/Ezvpn/Package.swift` (referenced by local path in project.yml); its binary target downloads the pinned release zip by URL+checksum (reproducible; SPM auto-exposes the embedded ezvpn.h to the bridging header, so no vendor/ dir and no HEADER_SEARCH_PATHS). Bump to a new release with `scripts/bump-xcframework.sh <tag>` (rewrites url+checksum) after the ezvpn release workflow publishes the `libezvpn-ios.xcframework.zip` asset.
+- for FFI dev against a local Rust build, run `./build-ios.sh release` in the sibling then set `EZVPN_LOCAL_XCFRAMEWORK=1` for both `xcodegen generate` and `xcodebuild` — SPM forbids binary paths outside the package root, so the sibling's dist/ios is reached via the committed symlink `Packages/Ezvpn/local/libezvpn.xcframework`
+- device-only: a Packet Tunnel Provider can't run in the Simulator, so the xcframework carries a single aarch64-apple-ios slice; build/verify with `xcodebuild -project Ezvpn.xcodeproj -scheme EzvpnApp -destination 'generic/platform=iOS' build`
 - regenerate the project from project.yml after code changes (`xcodegen generate`)

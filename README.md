@@ -4,9 +4,10 @@ A minimal iOS app + Packet Tunnel extension that runs the [`ezvpn`](../ezvpn)
 IP-over-QUIC tunnel on-device. **POC scope:** dual-stack **split tunnel**,
 real-device testing only, no App Store preparation.
 
-It links `libezvpn.a` (the Rust core, built from the sibling `../ezvpn` repo)
-into a `NEPacketTunnelProvider`. The Rust side does the iroh connect + handshake
-+ datagram loop; iOS owns the `utun` interface, routing, and IP/MTU config.
+It links `libezvpn.xcframework` (the Rust core, built from the sibling `../ezvpn`
+repo and delivered via a local Swift package) into a `NEPacketTunnelProvider`.
+The Rust side does the iroh connect + handshake + datagram loop; iOS owns the
+`utun` interface, routing, and IP/MTU config.
 
 ## What this POC does and does not do
 
@@ -39,25 +40,36 @@ into a `NEPacketTunnelProvider`. The Rust side does the iroh connect + handshake
   automatic signing will offer to add it, or enable it in the Developer portal).
 - Xcode (tested with 26.2) on Apple Silicon.
 - [`xcodegen`](https://github.com/yonaskolb/XcodeGen): `brew install xcodegen`.
-- Rust with the iOS target: `rustup target add aarch64-apple-ios`.
+- Rust with the iOS target (only for local FFI dev): `rustup target add aarch64-apple-ios`.
 
 ## Build & run
 
-1. **Build the Rust static library** (from the sibling repo). This stages
-   `vendor/libezvpn.a` and `vendor/ezvpn.h` here automatically:
+The Rust core is delivered as `libezvpn.xcframework` via a local Swift package
+(`Packages/Ezvpn`). Its binary target **downloads the pinned release zip by
+URL+checksum** by default — no local Rust build required. Bump to a newer
+`ezvpn` release with `scripts/bump-xcframework.sh <tag>` (rewrites the URL and
+checksum in `Packages/Ezvpn/Package.swift`).
 
-   ```sh
-   cd ../ezvpn
-   ./build-ios.sh release
-   ```
-
-2. **Generate the Xcode project:**
+1. **Generate the Xcode project** (SPM fetches the pinned xcframework):
 
    ```sh
    cd ../ezvpn-ios
    xcodegen generate
    open Ezvpn.xcodeproj
    ```
+
+   > **Local FFI dev** — to build against a locally compiled Rust core instead
+   > of the release, build it in the sibling repo and set `EZVPN_LOCAL_XCFRAMEWORK`:
+   >
+   > ```sh
+   > cd ../ezvpn && ./build-ios.sh release && cd ../ezvpn-ios
+   > EZVPN_LOCAL_XCFRAMEWORK=1 xcodegen generate
+   > # …and pass the same env var to xcodebuild / Xcode when building.
+   > ```
+   >
+   > SPM forbids binary paths outside the package root, so the sibling's
+   > `dist/ios` is reached via the committed symlink
+   > `Packages/Ezvpn/local/libezvpn.xcframework`.
 
 3. **Set signing.** Select your Team on **both** targets (`EzvpnApp` and
    `PacketTunnel`) under *Signing & Capabilities*. You can also set
@@ -86,15 +98,16 @@ into a `NEPacketTunnelProvider`. The Rust side does the iroh connect + handshake
 │ EzvpnApp (SwiftUI)      │        │ PacketTunnel (extension)     │
 │ NETunnelProviderManager │──VPN──▶│ NEPacketTunnelProvider       │
 │  installs config,       │ config │  startTunnel:                │
-│  start/stop             │        │   ezvpn_connect(json) ───────┼──▶ libezvpn.a
+│  start/stop             │        │   ezvpn_connect(json) ───────┼──▶ libezvpn
 └─────────────────────────┘        │   setTunnelNetworkSettings   │    (iroh connect
                                     │   ezvpn_run(utun_fd) ────────┼──▶  + handshake
                                     │  stopTunnel: ezvpn_stop      │     + datagram loop)
                                     └──────────────────────────────┘
 ```
 
-The C boundary is `vendor/ezvpn.h` (three calls: `ezvpn_connect` →
-`ezvpn_run` → `ezvpn_stop`). See the header for the JSON config/result shapes.
+The C boundary is `ezvpn.h` (three calls: `ezvpn_connect` → `ezvpn_run` →
+`ezvpn_stop`), delivered inside the xcframework. See the header for the JSON
+config/result shapes.
 
 ## Logs
 

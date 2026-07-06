@@ -4,9 +4,10 @@
 # Then open Ezvpn.xcodeproj, select your signing Team on BOTH targets, and run
 # on a *real device* (a Packet Tunnel Provider cannot run in the Simulator).
 #
-# The Rust static library + header come from the sibling ezvpn repo:
-#   cd ../ezvpn && ./build-ios.sh release
-# which stages vendor/libezvpn.a and vendor/ezvpn.h here.
+# The Rust static library + header come from the local Swift package in
+# Packages/Ezvpn — a binary target that downloads the pinned release zip
+# (libezvpn.xcframework) by URL+checksum, or a local build for FFI dev. See the
+# `packages:` section below and Packages/Ezvpn/Package.swift.
 name: Ezvpn
 
 options:
@@ -14,6 +15,13 @@ options:
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
+
+packages:
+  # Local package (Packages/Ezvpn) whose binary target downloads the pinned
+  # release zip by URL+checksum (reproducible), or links a local build when
+  # EZVPN_LOCAL_XCFRAMEWORK is set (FFI dev). No vendored copy, no fetch script.
+  Ezvpn:
+    path: Packages/Ezvpn
 
 # Per-developer signing lives in Developer.xcconfig (which #include?s the
 # gitignored Developer.local.xcconfig). Copy Developer.local.xcconfig.sample to
@@ -78,16 +86,13 @@ targets:
         CODE_SIGN_ENTITLEMENTS: Sources/PacketTunnel/PacketTunnel.entitlements
         INFOPLIST_FILE: Sources/PacketTunnel/Info.plist
         SWIFT_OBJC_BRIDGING_HEADER: Sources/PacketTunnel/Bridging-Header.h
-        # Static Rust lib + its system dependencies.
-        LIBRARY_SEARCH_PATHS:
-          - $(inherited)
-          - $(SRCROOT)/vendor
-        HEADER_SEARCH_PATHS:
-          - $(inherited)
-          - $(SRCROOT)/vendor
+        # No LIBRARY_SEARCH_PATHS/HEADER_SEARCH_PATHS/-lezvpn needed: SPM links
+        # the binary target's library and puts its embedded Headers/ dir on the
+        # consumer's search path, so the bridging header's `#import "ezvpn.h"`
+        # resolves automatically. The Rust lib comes from the package binary
+        # target; here we only add its system dependencies.
         OTHER_LDFLAGS:
           - $(inherited)
-          - -lezvpn
           - -lresolv
           - -lc++
           - -framework
@@ -98,3 +103,7 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
     dependencies:
       - sdk: NetworkExtension.framework
+      # Static-library XCFramework delivered via the sibling's Swift package
+      # binary target (downloads the pinned release zip by URL+checksum).
+      - package: Ezvpn
+        product: libezvpn
