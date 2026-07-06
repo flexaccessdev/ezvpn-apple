@@ -22,6 +22,11 @@ packages:
   # EZVPN_LOCAL_XCFRAMEWORK is set (FFI dev). No vendored copy, no fetch script.
   Ezvpn:
     path: Packages/Ezvpn
+  # Pure IP/CIDR primitives (overlap checks, netmask math) shared with the
+  # extension. Unit-tested natively on macOS: `swift test` in the package dir —
+  # the app targets are device-only, so tests can't live in them.
+  TunnelCore:
+    path: Packages/TunnelCore
 
 # Per-developer signing lives in Developer.xcconfig (which #include?s the
 # gitignored Developer.local.xcconfig). Copy Developer.local.xcconfig.sample to
@@ -107,3 +112,5 @@ targets:
       # binary target (downloads the pinned release zip by URL+checksum).
       - package: Ezvpn
         product: libezvpn
+      - package: TunnelCore
+        product: TunnelCore

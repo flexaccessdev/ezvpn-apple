@@ -96,6 +96,17 @@ checksum in `Packages/Ezvpn/Package.swift`).
    Run a reachable `ezvpn` server (see the `ezvpn` repo) configured with an
    IPv4 `network` and routes covering the private resources you want to reach.
 
+### Unit tests
+
+The pure IP/CIDR logic (prefix overlap, netmask math, the split-tunnel vs
+local-network conflict check) lives in the local package `Packages/TunnelCore`
+so it can be tested natively on the Mac — the app targets are device-only and
+can't host a test bundle:
+
+```sh
+cd Packages/TunnelCore && swift test
+```
+
 ## How it fits together
 
 ```
