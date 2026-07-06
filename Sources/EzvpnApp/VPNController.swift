@@ -156,14 +156,24 @@ final class VPNController: ObservableObject {
             runtimeInfo = nil
         }
 
-        // A connect attempt (or live session) that lands back at .disconnected
-        // failed on the tunnel side; ask the system why.
-        let wasActive = previous == .connecting || previous == .connected || previous == .reasserting
+        // A session that lands back at .disconnected may have failed on the
+        // tunnel side; ask the system why. Failed starts pass through
+        // .disconnecting on the way down (.connecting → .disconnecting →
+        // .disconnected), so it counts as active here — the fetch returns nil
+        // for a clean user-initiated stop, which stays silent.
+        let wasActive = previous == .connecting || previous == .connected
+            || previous == .reasserting || previous == .disconnecting
         if status == .disconnected, wasActive {
             conn.fetchLastDisconnectError { [weak self] error in
                 guard let error else { return }
+                // The system wraps the provider's own error (the message passed
+                // to startTunnel's completion) in a generic NEVPNConnectionError;
+                // prefer the underlying provider message when present.
+                let nsError = error as NSError
+                let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError
+                let message = underlying?.localizedDescription ?? error.localizedDescription
                 Task { @MainActor in
-                    self?.lastError = error.localizedDescription
+                    self?.lastError = message
                 }
             }
         }
