@@ -60,6 +60,16 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let routes = conf["routes"] as? [String] ?? []
         let routes6 = conf["routes6"] as? [String] ?? []
 
+        // Refuse to start when a configured split-tunnel prefix overlaps the
+        // network the device is currently on: routing the local subnet into the
+        // tunnel would cut off on-link hosts — including the gateway carrying
+        // the tunnel's own underlay traffic.
+        if let conflict = Self.splitTunnelConflict(routes: routes, routes6: routes6) {
+            os_log("%{public}@", log: log, type: .error, conflict)
+            completionHandler(Self.error(conflict))
+            return
+        }
+
         // Build the FFI config JSON. routes/routes6 are forwarded so the core can
         // compute which server underlay addresses overlap and must be excluded.
         let configDict: [String: Any] = [
@@ -477,6 +487,154 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         return NEIPv6Route(
             destinationAddress: String(parts[0]), networkPrefixLength: NSNumber(value: prefix))
+    }
+
+    // MARK: - Split-tunnel vs local network overlap
+
+    /// One network the device is attached to: the on-link subnet of an up,
+    /// running, non-loopback interface. Point-to-point links (cellular) carry
+    /// no on-link subnet to conflict with and are skipped.
+    private struct LocalNetwork {
+        /// Interface name (e.g. "en0"), for the refusal message.
+        let interface: String
+        /// Address bytes in network order: 4 (IPv4) or 16 (IPv6).
+        let bytes: [UInt8]
+        let prefix: Int
+    }
+
+    /// The first configured split-tunnel prefix that overlaps a network the
+    /// device is currently on, rendered as a refusal message; nil when clear.
+    /// Malformed CIDRs are skipped here — they are dropped from the applied
+    /// route set later anyway.
+    private static func splitTunnelConflict(routes: [String], routes6: [String]) -> String? {
+        let locals = localNetworks()
+        for (cidrs, family) in [(routes, AF_INET), (routes6, AF_INET6)] {
+            let byteCount = family == AF_INET ? 4 : 16
+            for cidr in cidrs {
+                guard let (bytes, prefix) = Self.parseCIDR(cidr, family: family) else { continue }
+                for local in locals where local.bytes.count == byteCount {
+                    if prefixesOverlap(bytes, prefix, local.bytes, local.prefix) {
+                        return "refusing to start: split-tunnel route \(cidr) overlaps "
+                            + "current network \(cidrDescription(local.bytes, local.prefix)) "
+                            + "on \(local.interface)"
+                    }
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Enumerate the on-link networks of every active broadcast interface via
+    /// getifaddrs. Loopback, point-to-point, our own utun, and IPv6 link-local
+    /// entries are excluded: none of them describe a routable local subnet.
+    private static func localNetworks() -> [LocalNetwork] {
+        var head: UnsafeMutablePointer<ifaddrs>?
+        guard getifaddrs(&head) == 0, let first = head else { return [] }
+        defer { freeifaddrs(head) }
+
+        var list: [LocalNetwork] = []
+        for ifa in sequence(first: first, next: { $0.pointee.ifa_next }) {
+            let flags = Int32(bitPattern: ifa.pointee.ifa_flags)
+            guard flags & IFF_UP != 0, flags & IFF_RUNNING != 0,
+                  flags & (IFF_LOOPBACK | IFF_POINTOPOINT) == 0,
+                  let sa = ifa.pointee.ifa_addr, let sm = ifa.pointee.ifa_netmask
+            else { continue }
+            let name = String(cString: ifa.pointee.ifa_name)
+            guard !name.hasPrefix("utun") else { continue }
+
+            switch Int32(sa.pointee.sa_family) {
+            case AF_INET:
+                let addr = sa.withMemoryRebound(to: sockaddr_in.self, capacity: 1) {
+                    withUnsafeBytes(of: $0.pointee.sin_addr) { Array($0) }
+                }
+                let mask = sm.withMemoryRebound(to: sockaddr_in.self, capacity: 1) {
+                    withUnsafeBytes(of: $0.pointee.sin_addr) { Array($0) }
+                }
+                list.append(LocalNetwork(interface: name, bytes: addr, prefix: leadingOnes(mask)))
+            case AF_INET6:
+                let addr = sa.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) {
+                    withUnsafeBytes(of: $0.pointee.sin6_addr) { Array($0) }
+                }
+                // Link-local lives on every interface and never routes.
+                if addr[0] == 0xfe, addr[1] & 0xc0 == 0x80 { continue }
+                let mask = sm.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) {
+                    withUnsafeBytes(of: $0.pointee.sin6_addr) { Array($0) }
+                }
+                list.append(LocalNetwork(interface: name, bytes: addr, prefix: leadingOnes(mask)))
+            default:
+                continue
+            }
+        }
+        return list
+    }
+
+    /// Parse "10.0.0.0/8" or "fd00::/8" into address bytes + prefix length.
+    private static func parseCIDR(_ cidr: String, family: Int32) -> (bytes: [UInt8], prefix: Int)? {
+        let parts = cidr.split(separator: "/")
+        let maxPrefix = family == AF_INET ? 32 : 128
+        guard parts.count == 2, let prefix = Int(parts[1]),
+              (0...maxPrefix).contains(prefix)
+        else { return nil }
+        if family == AF_INET {
+            var addr = in_addr()
+            guard inet_pton(AF_INET, String(parts[0]), &addr) == 1 else { return nil }
+            return (withUnsafeBytes(of: addr) { Array($0) }, prefix)
+        } else {
+            var addr = in6_addr()
+            guard inet_pton(AF_INET6, String(parts[0]), &addr) == 1 else { return nil }
+            return (withUnsafeBytes(of: addr) { Array($0) }, prefix)
+        }
+    }
+
+    /// Two prefixes overlap iff they agree on the first min(prefix) bits —
+    /// works on network-order bytes, so IPv4 and IPv6 share the one routine.
+    private static func prefixesOverlap(
+        _ a: [UInt8], _ aPrefix: Int, _ b: [UInt8], _ bPrefix: Int
+    ) -> Bool {
+        var bits = min(aPrefix, bPrefix)
+        var i = 0
+        while bits >= 8 {
+            if a[i] != b[i] { return false }
+            i += 1
+            bits -= 8
+        }
+        if bits > 0 {
+            let mask = UInt8(truncatingIfNeeded: 0xff << (8 - bits))
+            return a[i] & mask == b[i] & mask
+        }
+        return true
+    }
+
+    /// Prefix length implied by a netmask's leading one-bits.
+    private static func leadingOnes(_ mask: [UInt8]) -> Int {
+        var count = 0
+        for byte in mask {
+            if byte == 0xff { count += 8; continue }
+            var b = byte
+            while b & 0x80 != 0 { count += 1; b <<= 1 }
+            break
+        }
+        return count
+    }
+
+    /// Render address bytes + prefix as CIDR text with host bits zeroed
+    /// (e.g. 192.168.1.23 under /24 → "192.168.1.0/24").
+    private static func cidrDescription(_ bytes: [UInt8], _ prefix: Int) -> String {
+        var masked = bytes
+        for i in 0..<masked.count {
+            let bitStart = i * 8
+            if bitStart >= prefix {
+                masked[i] = 0
+            } else if bitStart + 8 > prefix {
+                masked[i] &= UInt8(truncatingIfNeeded: 0xff << (8 - (prefix - bitStart)))
+            }
+        }
+        var buf = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+        let family = masked.count == 4 ? AF_INET : AF_INET6
+        let rendered = masked.withUnsafeBytes { raw in
+            inet_ntop(family, raw.baseAddress, &buf, socklen_t(buf.count)) != nil
+        }
+        return rendered ? "\(String(cString: buf))/\(prefix)" : "?/\(prefix)"
     }
 
     /// Locate the `utun` file descriptor the OS created for this tunnel.

@@ -26,6 +26,10 @@ The Rust side does the iroh connect + handshake + datagram loop; iOS owns the
 - ✅ Disconnect on network change: any change to the physical network (Wi-Fi ↔
   cellular, different Wi-Fi, network lost) cancels the tunnel rather than trying
   to migrate the QUIC session across it — reconnect manually on the new network.
+- ✅ Refuses to start when a configured split-tunnel route overlaps the local
+  network's subnet (e.g. routing `192.168.0.0/16` while on a `192.168.1.0/24`
+  Wi-Fi): capturing the on-link subnet would cut off the LAN, including the
+  gateway carrying the tunnel's own underlay traffic.
 - ✅ Debug: while connected, the app shows the *applied* interface state —
   assigned addresses, tunnel routes, and the active bypass (excluded) routes —
   queried live from the tunnel process over the WireGuard-style
