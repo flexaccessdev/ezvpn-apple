@@ -255,18 +255,23 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 userInfo: [NSLocalizedDescriptionKey: message])
     }
 
-    /// Routes implied by the interface assignment itself: the on-link subnet of
-    /// the assigned address, plus a host route to the gateway when it sits
-    /// outside that subnet. The server advertises a host mask (/32, /128), so
-    /// the "subnet" is just the assigned address and the gateway host route is
-    /// what actually makes the server end of the tunnel reachable with no
-    /// user-configured routes.
+    /// Routes implied by the interface assignment itself. The server advertises
+    /// a host mask (/32), so there is no on-link subnet to route — only the
+    /// gateway host route, which is what makes the server end of the tunnel
+    /// reachable with no user-configured routes. A real subnet mask (host bits
+    /// present) additionally routes that on-link subnet; a route to the assigned
+    /// address itself is never emitted (routing your own address is a no-op).
     private static func ipv4InterfaceRoutes(
         ip: String, mask: String, gateway: String?
     ) -> [NEIPv4Route] {
         guard let ipBits = ipv4Bits(ip), let maskBits = ipv4Bits(mask) else { return [] }
-        var routes = [NEIPv4Route(
-            destinationAddress: ipv4String(ipBits & maskBits), subnetMask: mask)]
+        var routes: [NEIPv4Route] = []
+        // Skip the on-link subnet route under a host mask (/32): it would just be
+        // a route to our own address.
+        if maskBits != ~UInt32(0) {
+            routes.append(NEIPv4Route(
+                destinationAddress: ipv4String(ipBits & maskBits), subnetMask: mask))
+        }
         if let gateway, let gwBits = ipv4Bits(gateway), gwBits & maskBits != ipBits & maskBits {
             routes.append(NEIPv4Route(
                 destinationAddress: gateway, subnetMask: "255.255.255.255"))
@@ -279,8 +284,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         ip: String, prefix: Int, gateway: String?
     ) -> [NEIPv6Route] {
         guard let network = ipv6Network(ip, prefix: prefix) else { return [] }
-        var routes = [NEIPv6Route(
-            destinationAddress: network, networkPrefixLength: NSNumber(value: prefix))]
+        var routes: [NEIPv6Route] = []
+        // Skip the on-link subnet route under a host mask (/128): it would just
+        // be a route to our own address.
+        if prefix < 128 {
+            routes.append(NEIPv6Route(
+                destinationAddress: network, networkPrefixLength: NSNumber(value: prefix)))
+        }
         if let gateway, ipv6Network(gateway, prefix: prefix) != network {
             routes.append(NEIPv6Route(
                 destinationAddress: gateway, networkPrefixLength: 128))
