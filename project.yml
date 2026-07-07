@@ -79,6 +79,11 @@ targets:
     dependencies:
       - target: PacketTunnel
         embed: true
+      # The app now shares the pure profile model + name validation with the
+      # extension (TunnelProfile, validateTunnelName). The extension also links
+      # this package for the IP/CIDR primitives.
+      - package: TunnelCore
+        product: TunnelCore
 
   PacketTunnel:
     type: app-extension

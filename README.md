@@ -11,6 +11,11 @@ The Rust side does the iroh connect + handshake + datagram loop; iOS owns the
 
 ## What this POC does and does not do
 
+- ✅ Multiple saved VPN profiles, WireGuard-app style: a tunnel list where each
+  profile is its own `NETunnelProviderManager` (name shown in Settings > VPN).
+  Add/edit/rename/delete profiles; connect one at a time (activating a second
+  automatically tears down the first). All profiles share the one PacketTunnel
+  extension — each carries its own config in `providerConfiguration`.
 - ✅ IPv4/IPv6 split tunnel. The tunnel's own subnet (from the server-assigned
   address + mask) is always routed automatically; extra CIDRs are optional.
 - ✅ Connects to an `ezvpn` server over iroh (direct or relay), handshakes,
@@ -87,11 +92,14 @@ checksum in `Packages/Ezvpn/Package.swift`).
 4. **Run on a real device** (select your iPhone, not a simulator). On first
    connect, iOS prompts to allow the VPN configuration.
 
-5. **Enter the server details** in the app and tap Connect:
+5. **Add a profile** (tap `+`), fill in the details, Save, then toggle it on:
+   - *Name* — a unique label for the profile (shown in the list and Settings > VPN).
    - *Server node id* — the `ezvpn` server's iroh endpoint id.
    - *Auth token* — required; the token the server authenticates you with.
    - *Relay URLs* — optional hints; leave blank to use iroh defaults.
    - *Routes* — the private CIDRs to tunnel (defaults to RFC1918).
+
+   Add as many profiles as you like; only one connects at a time.
 
    Run a reachable `ezvpn` server (see the `ezvpn` repo) configured with an
    IPv4 `network` and routes covering the private resources you want to reach.
