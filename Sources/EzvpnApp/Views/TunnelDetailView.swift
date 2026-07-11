@@ -8,6 +8,7 @@ struct TunnelDetailView: View {
     @EnvironmentObject private var manager: TunnelsManager
     @Environment(\.dismiss) private var dismiss
     @State private var showingEdit = false
+    @State private var showingConnPath = false
     @State private var confirmingDelete = false
 
     private var isConnecting: Bool {
@@ -65,6 +66,13 @@ struct TunnelDetailView: View {
                 } footer: {
                     Text("Bypass routes are server underlay/relay addresses excluded from the tunnel so its own transport is never captured. Pull to refresh.")
                 }
+
+                // Debug readout of the live iroh path(s) (relay vs direct),
+                // mirroring flextunnel-ios. Only offered while connected —
+                // there is no path to show otherwise.
+                Section {
+                    Button("Connection path…") { showingConnPath = true }
+                }
             }
 
             Section { connectButton }
@@ -81,6 +89,9 @@ struct TunnelDetailView: View {
         .refreshable { await tunnel.refreshRuntimeInfo() }
         .sheet(isPresented: $showingEdit) {
             NavigationStack { TunnelEditView(mode: .edit(tunnel)) }
+        }
+        .sheet(isPresented: $showingConnPath) {
+            ConnPathSheet { await tunnel.queryConnPaths() }
         }
         .confirmationDialog(
             "Delete \(tunnel.name)?", isPresented: $confirmingDelete, titleVisibility: .visible

@@ -387,26 +387,46 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     }
 
     /// App <-> extension query channel, using the WireGuard app's protocol:
-    /// a single byte 0 means "get runtime configuration"; the reply is the
-    /// applied network config as JSON, nil when no tunnel is running.
+    /// a single byte selects the query. Byte 0 means "get runtime
+    /// configuration" (the applied network config as JSON); byte 1 means
+    /// "snapshot the live iroh connection path(s)" (the `ezvpn_conn_path`
+    /// JSON). The reply is nil when no tunnel is running.
     override func handleAppMessage(
         _ messageData: Data,
         completionHandler: ((Data?) -> Void)? = nil
     ) {
         guard let completionHandler else { return }
-        guard messageData.count == 1, messageData[0] == 0 else {
+        guard messageData.count == 1 else {
             completionHandler(nil)
             return
         }
-        workQueue.async { [self] in
-            guard
-                let runtimeConfig,
-                let data = try? JSONSerialization.data(withJSONObject: runtimeConfig)
-            else {
-                completionHandler(nil)
-                return
+        switch messageData[0] {
+        case 0:
+            workQueue.async { [self] in
+                guard
+                    let runtimeConfig,
+                    let data = try? JSONSerialization.data(withJSONObject: runtimeConfig)
+                else {
+                    completionHandler(nil)
+                    return
+                }
+                completionHandler(data)
             }
-            completionHandler(data)
+        case 1:
+            workQueue.async { [self] in
+                guard let handle else {
+                    completionHandler(nil)
+                    return
+                }
+                var buf = [CChar](repeating: 0, count: 4096)
+                guard ezvpn_conn_path(handle, &buf, buf.count) == 1 else {
+                    completionHandler(nil)
+                    return
+                }
+                completionHandler(Data(String(cString: buf).utf8))
+            }
+        default:
+            completionHandler(nil)
         }
     }
 

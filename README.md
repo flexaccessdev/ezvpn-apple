@@ -1,8 +1,8 @@
 # ezvpn-ios (POC)
 
 A minimal iOS app + Packet Tunnel extension that runs the [`ezvpn`](../ezvpn)
-IP-over-QUIC tunnel on-device. **POC scope:** dual-stack **split tunnel**,
-real-device testing only, no App Store preparation.
+IP-over-QUIC tunnel on-device. **POC scope:** dual-stack **split tunnel** with
+optional split DNS, real-device testing only, no App Store preparation.
 
 It links `libezvpn.xcframework` (the Rust core, built from the sibling `../ezvpn`
 repo and delivered via a local Swift package) into a `NEPacketTunnelProvider`.
@@ -16,16 +16,21 @@ The Rust side does the iroh connect + handshake + datagram loop; iOS owns the
   Add/edit/rename/delete profiles; connect one at a time (activating a second
   automatically tears down the first). All profiles share the one PacketTunnel
   extension — each carries its own config in `providerConfiguration`.
-- ✅ IPv4/IPv6 split tunnel. The tunnel's own subnet (from the server-assigned
-  address + mask) is always routed automatically; extra CIDRs are optional.
+- ✅ IPv4/IPv6 split tunnel. The server gateway/interface routes are always
+  routed automatically; extra IPv4 and IPv6 CIDRs are optional.
+- ✅ Split DNS / conditional forwarding. Optional DNS server IPs can be applied
+  to the tunnel; optional match domains restrict those resolvers to specific
+  suffixes, while an empty match-domain list sends all DNS to the tunnel DNS
+  servers.
 - ✅ Connects to an `ezvpn` server over iroh (direct or relay), handshakes,
   tunnels IP over QUIC datagrams.
 - ✅ Underlay-bypass routing, like the desktop client's bootstrap bypass: at
   connect, the core computes every relay IP plus the server's candidate
-  underlay addresses, and any of them a routed prefix would capture is excluded
-  from the tunnel (`excludedRoutes`), so the transport never self-captures.
-  Static (handshake-time) only — the server's mid-session address publications
-  are not re-applied.
+  underlay addresses, and any **global-scope** address a routed prefix would
+  capture is excluded from the tunnel (`excludedRoutes`), so the transport never
+  self-captures. Private/LAN server addresses are intentionally kept in the
+  tunnel. Static (handshake-time) only — the server's mid-session address
+  publications are not re-applied.
 - ✅ Simple manual connect/disconnect. Tunnel teardown follows wireguard-apple:
   `stopTunnel` completes only after the Rust data plane has actually stopped.
 - ✅ Disconnect on network change: any change to the physical network (Wi-Fi ↔
@@ -36,9 +41,10 @@ The Rust side does the iroh connect + handshake + datagram loop; iOS owns the
   Wi-Fi): capturing the on-link subnet would cut off the LAN, including the
   gateway carrying the tunnel's own underlay traffic.
 - ✅ Debug: while connected, the app shows the *applied* interface state —
-  assigned addresses, tunnel routes, and the active bypass (excluded) routes —
-  queried live from the tunnel process over the WireGuard-style
-  runtime-configuration app message (single byte `0`).
+  assigned addresses, tunnel routes, active bypass (excluded) routes, and DNS
+  settings — queried live from the tunnel process over the WireGuard-style
+  runtime-configuration app message (single byte `0`). It can also show a live
+  iroh connection-path snapshot (direct/relay paths) via app message byte `1`.
 - ❌ No App Store / TestFlight setup. No simulator (a Packet Tunnel Provider
   only runs on a real device).
   
@@ -81,28 +87,35 @@ checksum in `Packages/Ezvpn/Package.swift`).
    > `dist/ios` is reached via the committed symlink
    > `Packages/Ezvpn/local/libezvpn.xcframework`.
 
-3. **Set signing.** Select your Team on **both** targets (`EzvpnApp` and
-   `PacketTunnel`) under *Signing & Capabilities*. You can also set
-   `DEVELOPMENT_TEAM` in `project.yml` and re-run `xcodegen generate`.
+2. **Set signing.** Select your Team on **both** targets (`EzvpnApp` and
+   `PacketTunnel`) under *Signing & Capabilities*. For repeatable command-line
+   builds, copy `Developer.local.xcconfig.sample` to
+   `Developer.local.xcconfig`, set `DEVELOPMENT_TEAM`, and re-run
+   `xcodegen generate`.
 
    If you change the bundle identifiers, update `providerBundleID` in
-   `Sources/EzvpnApp/VPNController.swift` to match the extension's id (it must
+   `Sources/EzvpnApp/TunnelsManager.swift` to match the extension's id (it must
    be a prefix-child of the app id, e.g. `com.you.ezvpn` + `.PacketTunnel`).
 
-4. **Run on a real device** (select your iPhone, not a simulator). On first
+3. **Run on a real device** (select your iPhone, not a simulator). On first
    connect, iOS prompts to allow the VPN configuration.
 
-5. **Add a profile** (tap `+`), fill in the details, Save, then toggle it on:
+4. **Add a profile** (tap `+`), fill in the details, Save, then toggle it on:
    - *Name* — a unique label for the profile (shown in the list and Settings > VPN).
    - *Server node id* — the `ezvpn` server's iroh endpoint id.
    - *Auth token* — required; the token the server authenticates you with.
    - *Relay URLs* — optional hints; leave blank to use iroh defaults.
-   - *Routes* — the private CIDRs to tunnel (defaults to RFC1918).
+   - *IPv4 routes* — optional comma-separated CIDRs to tunnel.
+   - *IPv6 routes* — optional comma-separated CIDRs to tunnel.
+   - *DNS servers* — optional comma-separated IP literals to use as tunnel DNS.
+   - *Match domains* — optional comma-separated suffixes for split DNS. Leave
+     blank with DNS servers set to send all DNS through those servers.
 
    Add as many profiles as you like; only one connects at a time.
 
    Run a reachable `ezvpn` server (see the `ezvpn` repo) configured with an
-   IPv4 `network` and routes covering the private resources you want to reach.
+   IPv4 `network`, IPv6 `network6`, or both, and add routes covering the private
+   resources you want to reach.
 
 ### Unit tests
 
@@ -126,12 +139,15 @@ cd Packages/TunnelCore && swift test
 └─────────────────────────┘        │   setTunnelNetworkSettings   │    (iroh connect
                                     │   ezvpn_run(utun_fd) ────────┼──▶  + handshake
                                     │  stopTunnel: ezvpn_stop      │     + datagram loop)
+                                    │  debug: ezvpn_conn_path      │
                                     └──────────────────────────────┘
 ```
 
-The C boundary is `ezvpn.h` (three calls: `ezvpn_connect` → `ezvpn_run` →
-`ezvpn_stop`), delivered inside the xcframework. See the header for the JSON
-config/result shapes.
+The C boundary is `ezvpn.h`, delivered inside the xcframework. The main
+lifecycle is `ezvpn_connect` → `ezvpn_run` → `ezvpn_stop`; the extension also
+calls `ezvpn_init_logging`, and the debug UI can query `ezvpn_conn_path` for a
+live direct/relay path snapshot. See the header for the JSON config/result
+shapes.
 
 ## Logs
 
