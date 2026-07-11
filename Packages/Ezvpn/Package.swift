@@ -13,8 +13,9 @@ import PackageDescription
 // Local FFI dev: set EZVPN_LOCAL_XCFRAMEWORK to link a locally built xcframework
 // instead of the release. SPM forbids binary-target paths outside the package
 // root, so the local build is reached through the committed relative symlink
-// local/libezvpn.xcframework -> ../ezvpn/dist/ios. Set the var to "1" to use
-// that symlink, or to another path relative to this package dir:
+// local/libezvpn.xcframework points at sibling
+// ../ezvpn/dist/ios/libezvpn.xcframework. Set the var to "1" to use that
+// symlink, or to another path relative to this package dir:
 //   EZVPN_LOCAL_XCFRAMEWORK=1 xcodegen generate && ... xcodebuild ...
 
 func localBinaryTarget() -> Target? {
