@@ -1,7 +1,7 @@
-# ezvpn-ios (POC)
+# ezvpn-ios
 
 A minimal iOS app + Packet Tunnel extension that runs the [`ezvpn`](../ezvpn)
-IP-over-QUIC tunnel on-device. **POC scope:** dual-stack **split tunnel** with
+IP-over-QUIC tunnel on-device. **Scope:** dual-stack **split tunnel** with
 optional split DNS, real-device testing only, no App Store preparation.
 
 It links `libezvpn.xcframework` (the Rust core, built from the sibling `../ezvpn`
@@ -9,7 +9,7 @@ repo and delivered via a local Swift package) into a `NEPacketTunnelProvider`.
 The Rust side does the iroh connect + handshake + datagram loop; iOS owns the
 `utun` interface, routing, and IP/MTU config.
 
-## What this POC does and does not do
+## What this app does and does not do
 
 - ✅ Multiple saved VPN profiles, WireGuard-app style: a tunnel list where each
   profile is its own `NETunnelProviderManager` (name shown in Settings > VPN).
