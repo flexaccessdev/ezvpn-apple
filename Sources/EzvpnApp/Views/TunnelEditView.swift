@@ -20,6 +20,8 @@ struct TunnelEditView: View {
     @State private var relayURLs = ""
     @State private var routes = ""
     @State private var routes6 = ""
+    @State private var dnsServers = ""
+    @State private var dnsMatchDomains = ""
     @State private var error: String?
     @State private var saving = false
     @State private var didLoad = false
@@ -78,6 +80,21 @@ struct TunnelEditView: View {
                 }
             }
 
+            Section {
+                LabeledField("DNS servers", hint: "comma-separated IPs, optional") {
+                    TextField("", text: $dnsServers)
+                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                }
+                LabeledField("Match domains", hint: "comma-separated, optional") {
+                    TextField("", text: $dnsMatchDomains)
+                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                }
+            } header: {
+                Text("Split DNS (conditional forwarding)")
+            } footer: {
+                Text("Names under the match domains resolve via these DNS servers through the tunnel; everything else keeps the network's normal DNS. Needed because iOS ignores installed DNS profiles while a VPN is connected. Servers should sit inside a tunnel route. Empty match domains send all DNS through the servers.")
+            }
+
             if let error {
                 Section {
                     Text(error).foregroundStyle(.red).font(.footnote)
@@ -109,12 +126,23 @@ struct TunnelEditView: View {
         relayURLs = profile.relayURLs.joined(separator: ", ")
         routes = profile.routes.joined(separator: ", ")
         routes6 = profile.routes6.joined(separator: ", ")
+        dnsServers = profile.dnsServers.joined(separator: ", ")
+        dnsMatchDomains = profile.dnsMatchDomains.joined(separator: ", ")
     }
 
     private func save() async {
         error = nil
         saving = true
         defer { saving = false }
+
+        let dnsServerList = splitCSV(dnsServers)
+        let dnsMatchDomainList = splitCSV(dnsMatchDomains).map(normalizedDNSMatchDomain)
+        if let dnsError = splitDNSValidationError(
+            servers: dnsServerList, matchDomains: dnsMatchDomainList
+        ) {
+            error = dnsError
+            return
+        }
 
         // Preserve the stable id on edit; mint a fresh one on add.
         let id: UUID
@@ -131,7 +159,9 @@ struct TunnelEditView: View {
             authToken: trimmed(authToken),
             relayURLs: splitCSV(relayURLs),
             routes: splitCSV(routes),
-            routes6: splitCSV(routes6)
+            routes6: splitCSV(routes6),
+            dnsServers: dnsServerList,
+            dnsMatchDomains: dnsMatchDomainList
         )
 
         do {

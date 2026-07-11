@@ -22,6 +22,12 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
     public var routes: [String]
     /// IPv6 CIDRs to route through the tunnel (split tunnel).
     public var routes6: [String]
+    /// DNS server IPs the tunnel provides. Empty = the tunnel touches no DNS.
+    public var dnsServers: [String]
+    /// Domain suffixes resolved via `dnsServers` (split DNS / conditional
+    /// forwarding); every other name keeps the physical network's resolvers.
+    /// Empty with `dnsServers` set = all DNS goes through the tunnel.
+    public var dnsMatchDomains: [String]
 
     public init(
         id: UUID = UUID(),
@@ -30,7 +36,9 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
         authToken: String,
         relayURLs: [String],
         routes: [String],
-        routes6: [String]
+        routes6: [String],
+        dnsServers: [String],
+        dnsMatchDomains: [String]
     ) {
         self.id = id
         self.name = name
@@ -39,14 +47,17 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
         self.relayURLs = relayURLs
         self.routes = routes
         self.routes6 = routes6
+        self.dnsServers = dnsServers
+        self.dnsMatchDomains = dnsMatchDomains
     }
 }
 
 /// Keys used in the `NETunnelProviderProtocol.providerConfiguration` plist
-/// dictionary. `serverNodeID`/`authToken`/`relayURLs`/`routes`/`routes6` are the
-/// keys the PacketTunnel extension already reads — do not rename them without
-/// updating `PacketTunnelProvider.startTunnel`. `profileID`/`name` are additive
-/// and ignored by the extension.
+/// dictionary. `serverNodeID`/`authToken`/`relayURLs`/`routes`/`routes6`/
+/// `dnsServers`/`dnsMatchDomains` are the keys the PacketTunnel extension
+/// reads — do not rename them without updating
+/// `PacketTunnelProvider.startTunnel`. `profileID`/`name` are additive and
+/// ignored by the extension.
 public enum ProviderConfigKey {
     public static let profileID = "profile_id"
     public static let name = "name"
@@ -55,6 +66,8 @@ public enum ProviderConfigKey {
     public static let relayURLs = "relay_urls"
     public static let routes = "routes"
     public static let routes6 = "routes6"
+    public static let dnsServers = "dns_servers"
+    public static let dnsMatchDomains = "dns_match_domains"
 }
 
 public extension TunnelProfile {
@@ -70,6 +83,8 @@ public extension TunnelProfile {
             ProviderConfigKey.relayURLs: relayURLs,
             ProviderConfigKey.routes: routes,
             ProviderConfigKey.routes6: routes6,
+            ProviderConfigKey.dnsServers: dnsServers,
+            ProviderConfigKey.dnsMatchDomains: dnsMatchDomains,
         ]
     }
 
@@ -89,7 +104,9 @@ public extension TunnelProfile {
             authToken: conf[ProviderConfigKey.authToken] as? String ?? "",
             relayURLs: conf[ProviderConfigKey.relayURLs] as? [String] ?? [],
             routes: conf[ProviderConfigKey.routes] as? [String] ?? [],
-            routes6: conf[ProviderConfigKey.routes6] as? [String] ?? []
+            routes6: conf[ProviderConfigKey.routes6] as? [String] ?? [],
+            dnsServers: conf[ProviderConfigKey.dnsServers] as? [String] ?? [],
+            dnsMatchDomains: conf[ProviderConfigKey.dnsMatchDomains] as? [String] ?? []
         )
     }
 }

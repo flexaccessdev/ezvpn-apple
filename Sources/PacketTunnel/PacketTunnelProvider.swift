@@ -60,6 +60,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         let relayURLs = conf["relay_urls"] as? [String] ?? []
         let routes = conf["routes"] as? [String] ?? []
         let routes6 = conf["routes6"] as? [String] ?? []
+        let dnsServers = conf["dns_servers"] as? [String] ?? []
+        let dnsMatchDomains = conf["dns_match_domains"] as? [String] ?? []
 
         // Refuse to start when a configured split-tunnel prefix overlaps the
         // network the device is currently on: routing the local subnet into the
@@ -96,6 +98,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // at "disconnecting" until the OS kills the process.
         DispatchQueue.global(qos: .userInitiated).async {
             self.connectAndStart(configStr: configStr, routes: routes, routes6: routes6,
+                                 dnsServers: dnsServers, dnsMatchDomains: dnsMatchDomains,
                                  completionHandler: completionHandler)
         }
     }
@@ -106,6 +109,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         configStr: String,
         routes: [String],
         routes6: [String],
+        dnsServers: [String],
+        dnsMatchDomains: [String],
         completionHandler: @escaping (Error?) -> Void
     ) {
         // ezvpn_connect: connect + handshake. Result/error JSON lands in `buf`.
@@ -192,6 +197,37 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         settings.mtu = NSNumber(value: mtu)
 
+        // Split DNS (conditional forwarding): names under the match domains
+        // resolve via the tunnel's DNS servers; every other name keeps the
+        // physical network's resolvers. This must live on the tunnel — iOS
+        // ignores installed DNS-settings profiles (com.apple.dnsSettings.managed)
+        // while any VPN is up, so a profile-based split DNS goes dark the
+        // moment this tunnel connects.
+        if !dnsServers.isEmpty {
+            let dns = NEDNSSettings(servers: dnsServers)
+            if !dnsMatchDomains.isEmpty {
+                dns.matchDomains = dnsMatchDomains
+                // Route-only: match domains must not double as search suffixes.
+                dns.matchDomainsNoSearch = true
+            }
+            settings.dnsSettings = dns
+            // A server no tunnel route covers is answered (or not) by the
+            // underlying network — usually a misconfiguration for a private
+            // resolver, but legitimate for a public one, so warn instead of
+            // refusing to start.
+            let outside = dnsServersOutsideRoutes(
+                servers: dnsServers,
+                routes: (settings.ipv4Settings?.includedRoutes ?? []).map(Self.cidrString),
+                routes6: (settings.ipv6Settings?.includedRoutes ?? []).map(Self.cidrString))
+            if !outside.isEmpty {
+                os_log("DNS server(s) %{public}@ not covered by any tunnel route",
+                       log: log, type: .error, outside.joined(separator: ", "))
+            }
+        } else if !dnsMatchDomains.isEmpty {
+            os_log("ignoring %d DNS match domain(s): no DNS servers configured",
+                   log: log, type: .info, dnsMatchDomains.count)
+        }
+
         // Snapshot of what is being applied, for the app's debug UI (served
         // via handleAppMessage). Built from the settings object itself so it
         // reports the routes actually installed, not the ones requested.
@@ -205,6 +241,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             runtime["assigned_ip6"] = ipv6.addresses.first
             runtime["included_routes6"] = (ipv6.includedRoutes ?? []).map(Self.cidrString)
             runtime["bypass_routes6"] = (ipv6.excludedRoutes ?? []).map(Self.cidrString)
+        }
+        if let dns = settings.dnsSettings {
+            runtime["dns_servers"] = dns.servers
+            runtime["dns_match_domains"] = dns.matchDomains ?? []
         }
 
         // Publish the handle so stopTunnel can find it, then keep every further

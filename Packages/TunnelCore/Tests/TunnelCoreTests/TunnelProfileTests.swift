@@ -7,12 +7,15 @@ final class TunnelProfileTests: XCTestCase {
         name: String = "Home",
         relayURLs: [String] = ["https://relay.example"],
         routes: [String] = ["10.0.0.0/8"],
-        routes6: [String] = ["fd00::/64"]
+        routes6: [String] = ["fd00::/64"],
+        dnsServers: [String] = ["10.22.33.10"],
+        dnsMatchDomains: [String] = ["local.example.com"]
     ) -> TunnelProfile {
         TunnelProfile(
             id: id, name: name,
             serverNodeID: "node-abc", authToken: "tok",
-            relayURLs: relayURLs, routes: routes, routes6: routes6
+            relayURLs: relayURLs, routes: routes, routes6: routes6,
+            dnsServers: dnsServers, dnsMatchDomains: dnsMatchDomains
         )
     }
 
@@ -24,6 +27,8 @@ final class TunnelProfileTests: XCTestCase {
         XCTAssertEqual(conf["relay_urls"] as? [String], ["https://relay.example"])
         XCTAssertEqual(conf["routes"] as? [String], ["10.0.0.0/8"])
         XCTAssertEqual(conf["routes6"] as? [String], ["fd00::/64"])
+        XCTAssertEqual(conf["dns_servers"] as? [String], ["10.22.33.10"])
+        XCTAssertEqual(conf["dns_match_domains"] as? [String], ["local.example.com"])
         XCTAssertNotNil(conf["profile_id"] as? String)
         XCTAssertEqual(conf["name"] as? String, "Home")
     }
@@ -55,12 +60,15 @@ final class TunnelProfileTests: XCTestCase {
     }
 
     func testEmptyArraysRoundTrip() {
-        let profile = sample(relayURLs: [], routes: [], routes6: [])
+        let profile = sample(relayURLs: [], routes: [], routes6: [],
+                             dnsServers: [], dnsMatchDomains: [])
         let decoded = TunnelProfile.from(
             providerConfiguration: profile.providerConfiguration(), name: profile.name)
         XCTAssertEqual(decoded?.relayURLs, [])
         XCTAssertEqual(decoded?.routes, [])
         XCTAssertEqual(decoded?.routes6, [])
+        XCTAssertEqual(decoded?.dnsServers, [])
+        XCTAssertEqual(decoded?.dnsMatchDomains, [])
     }
 
     func testMissingOptionalKeysDefaultToEmpty() {
@@ -71,6 +79,8 @@ final class TunnelProfileTests: XCTestCase {
         XCTAssertEqual(decoded?.relayURLs, [])
         XCTAssertEqual(decoded?.routes, [])
         XCTAssertEqual(decoded?.routes6, [])
+        XCTAssertEqual(decoded?.dnsServers, [])
+        XCTAssertEqual(decoded?.dnsMatchDomains, [])
     }
 
     func testMissingProfileIDFailsDecode() {

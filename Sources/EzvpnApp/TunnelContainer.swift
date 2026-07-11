@@ -71,6 +71,8 @@ final class TunnelContainer: ObservableObject, Identifiable {
         var includedRoutes6: [String]
         var bypassRoutes: [String]
         var bypassRoutes6: [String]
+        var dnsServers: [String]
+        var dnsMatchDomains: [String]
     }
 
     /// The profile's stable UUID, read from the manager's providerConfiguration.
@@ -200,7 +202,9 @@ final class TunnelContainer: ObservableObject, Identifiable {
             includedRoutes: obj["included_routes"] as? [String] ?? [],
             includedRoutes6: obj["included_routes6"] as? [String] ?? [],
             bypassRoutes: obj["bypass_routes"] as? [String] ?? [],
-            bypassRoutes6: obj["bypass_routes6"] as? [String] ?? []
+            bypassRoutes6: obj["bypass_routes6"] as? [String] ?? [],
+            dnsServers: obj["dns_servers"] as? [String] ?? [],
+            dnsMatchDomains: obj["dns_match_domains"] as? [String] ?? []
         )
     }
 
