@@ -169,27 +169,29 @@ final class TunnelContainer: ObservableObject, Identifiable {
         refreshStatus()
     }
 
-    /// Ask the running tunnel for its applied network config (WireGuard's
-    /// protocol: send byte 0, get JSON back).
-    func refreshRuntimeInfo() async {
+    /// Send a one-byte query to the running tunnel process and return its raw
+    /// reply (the WireGuard app's provider-message protocol). nil when the
+    /// tunnel is down or the message could not be delivered.
+    private func sendTunnelQuery(_ byte: UInt8) async -> Data? {
         guard
             status == .connected,
             let session = manager.connection as? NETunnelProviderSession
-        else {
-            runtimeInfo = nil
-            return
-        }
-        let reply: Data? = await withCheckedContinuation { continuation in
+        else { return nil }
+        return await withCheckedContinuation { continuation in
             do {
-                try session.sendProviderMessage(Data([0])) { data in
+                try session.sendProviderMessage(Data([byte])) { data in
                     continuation.resume(returning: data)
                 }
             } catch {
                 continuation.resume(returning: nil)
             }
         }
+    }
+
+    /// Ask the running tunnel for its applied network config (byte 0).
+    func refreshRuntimeInfo() async {
         guard
-            let reply,
+            let reply = await sendTunnelQuery(0),
             let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any]
         else {
             runtimeInfo = nil
@@ -206,6 +208,39 @@ final class TunnelContainer: ObservableObject, Identifiable {
             dnsServers: obj["dns_servers"] as? [String] ?? [],
             dnsMatchDomains: obj["dns_match_domains"] as? [String] ?? []
         )
+    }
+
+    /// One live iroh connection path, decoded from the tunnel's
+    /// `ezvpn_conn_path` snapshot (see `ConnPathSheet`).
+    struct ConnPath: Identifiable {
+        enum Kind: String {
+            case direct, relay, other
+        }
+
+        let id = UUID()
+        let kind: Kind
+        /// Human line like "Direct 1.2.3.4:52186 (rtt 1ms)".
+        let display: String
+        /// Whether iroh currently routes traffic over this path.
+        let selected: Bool
+    }
+
+    /// Snapshot how the running tunnel currently reaches the server (byte 1):
+    /// all discovered iroh paths, empty while none are established.
+    func queryConnPaths() async -> [ConnPath] {
+        guard
+            let reply = await sendTunnelQuery(1),
+            let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any],
+            let raw = obj["paths"] as? [[String: Any]]
+        else { return [] }
+        return raw.compactMap { entry in
+            guard let display = entry["display"] as? String else { return nil }
+            return ConnPath(
+                kind: (entry["kind"] as? String).flatMap(ConnPath.Kind.init) ?? .other,
+                display: display,
+                selected: entry["selected"] as? Bool ?? false
+            )
+        }
     }
 
     private func fetchLastDisconnectError() {
