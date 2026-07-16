@@ -11,6 +11,7 @@ struct MenuBarView: View {
 
     var body: some View {
         Button {
+            NSApplication.shared.setActivationPolicy(.regular)
             openWindow(id: EzvpnScene.mainWindowID)
             NSApplication.shared.activate()
         } label: {

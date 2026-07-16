@@ -35,7 +35,8 @@ Network Extension owns the `utun` interface, routing, and IP/MTU config.
 - ✅ Simple manual connect/disconnect. Tunnel teardown follows wireguard-apple:
   `stopTunnel` completes only after the Rust data plane has actually stopped.
 - ✅ On macOS, a native menu-bar icon provides quick profile connect/disconnect,
-  main-window, and quit actions while the main window is closed.
+  main-window, and quit actions. Closing the main window removes the Dock icon
+  while leaving the menu-bar controls running; reopening restores both.
 - ✅ Disconnect on network change: any change to the physical network (Wi-Fi ↔
   cellular, different Wi-Fi, network lost) cancels the tunnel rather than trying
   to migrate the QUIC session across it — reconnect manually on the new network.
