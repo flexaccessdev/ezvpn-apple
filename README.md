@@ -55,7 +55,40 @@ Network Extension owns the `utun` interface, routing, and IP/MTU config.
   a development-signed app extension; system extensions are needed only for
   Developer ID distribution. A Packet Tunnel Provider cannot run in the iOS
   Simulator.
-  
+
+## Prebuilt downloads (GitHub Releases)
+
+The **Release (Manual)** workflow attaches **unsigned** app bundles to each
+GitHub release, produced by `.github/workflows/build-unsigned.yml` with
+`CODE_SIGNING_ALLOWED=NO` (so CI needs no signing secrets):
+
+- `ezvpn-macos-unsigned.tar.gz` — the macOS `ezvpn.app` (Apple Silicon).
+- `ezvpn-ios-unsigned.tar.gz` — the iOS `ezvpn.app` (`ios-arm64`, device only).
+
+**These are not click-to-run downloads.** A Packet Tunnel Provider uses the
+restricted `com.apple.developer.networking.networkextension` entitlement: the
+system will not load the network extension unless the app *and* the extension
+are signed with a provisioning profile that grants that capability, and on
+macOS Gatekeeper blocks an unsigned bundle outright. The tarballs exist for
+build verification and inspection — running the tunnel always requires signing
+under a real team.
+
+### What another developer has to do to run it
+
+You must sign it under your **own** paid Apple Developer team (see
+[Prerequisites](#prerequisites)), which means **building from source, not
+re-signing the download** — the app's bundle id is compiled in, so it can't be
+repointed inside a prebuilt bundle. The default bundle-id prefix
+(`com.andrewtheguy.ezvpn`) is the maintainer's; those App IDs belong to their
+team and the Network Extension needs explicit, non-wildcard App IDs, so you
+can't provision them under yours.
+
+So follow [Build & run](#build--run): copy `Developer.local.xcconfig.sample` to
+`Developer.local.xcconfig`, set your `DEVELOPMENT_TEAM` **and** a
+`BUNDLE_ID_PREFIX` your team owns, `xcodegen generate`, then build with
+`scripts/run-macos.sh` (macOS) or `scripts/run-device-ios.sh <DEVICE_ID>`
+(iOS). Xcode signs it as it builds.
+
 ## Prerequisites
 
 - **Paid Apple Developer account.** The Network Extension (`packet-tunnel-provider`)
@@ -111,9 +144,13 @@ versions to the release version).
    `Developer.local.xcconfig`, set `DEVELOPMENT_TEAM`, and re-run
    `xcodegen generate`.
 
-   If you change the bundle identifiers, update `providerBundleID` in
-   `Sources/Ezvpn/TunnelsManager.swift` to match the extension's id (it must
-   be a prefix-child of the app id, e.g. `com.you.ezvpn` + `.PacketTunnel`).
+   The bundle-id prefix defaults to `com.andrewtheguy.ezvpn` (the maintainer's,
+   committed in `Developer.xcconfig`). Those App IDs belong to the maintainer's
+   team, so to sign under your own team set `BUNDLE_ID_PREFIX` in the same
+   `Developer.local.xcconfig` to a prefix you own — nothing else to edit: the
+   app id, `.PacketTunnel` extension id, keychain access group, and the
+   extension id the app targets (`TunnelsManager.providerBundleID`, derived from
+   `Bundle.main`) all follow it.
 
 3. **Run the app.** For macOS, build and open the native app with:
 

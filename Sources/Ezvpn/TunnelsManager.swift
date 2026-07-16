@@ -29,8 +29,11 @@ final class TunnelsManager: ObservableObject {
     @Published private(set) var menuBarIconState: MenuBarIconState = .disconnected
     @Published var lastError: String?
 
-    /// Bundle id of the Packet Tunnel extension (must match project.yml).
-    private let providerBundleID = "com.andrewtheguy.ezvpn.PacketTunnel"
+    /// Bundle id of the Packet Tunnel extension. It is always the app's own
+    /// bundle id plus the ".PacketTunnel" suffix (see PRODUCT_BUNDLE_IDENTIFIER
+    /// in project.yml), so deriving it from Bundle.main keeps it correct under
+    /// any $(BUNDLE_ID_PREFIX) the build was signed with — no hardcoded prefix.
+    private let providerBundleID = Bundle.main.bundleIdentifier! + ".PacketTunnel"
 
     private var statusObserver: NSObjectProtocol?
     private var configObserver: NSObjectProtocol?

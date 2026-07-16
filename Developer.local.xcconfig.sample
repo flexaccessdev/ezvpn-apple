@@ -2,3 +2,10 @@
 // Team ID. Developer.local.xcconfig is gitignored so each developer uses their
 // own team; the committed Developer.xcconfig #include?s it automatically.
 DEVELOPMENT_TEAM =
+
+// Optional. Bundle-id prefix for the app + extension. Leave commented to use
+// the committed default (com.andrewtheguy.ezvpn) — but those App IDs belong to
+// the maintainer's team, so signing under your own team needs a prefix your
+// team can register. Uncomment and set one you own (the Network Extension
+// requires explicit, non-wildcard App IDs, so this must be a real prefix):
+// BUNDLE_ID_PREFIX = com.yourname.ezvpn
