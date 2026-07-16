@@ -115,6 +115,13 @@ targets:
           - Security
           - -framework
           - SystemConfiguration
+        # iroh's macOS network monitor queries Wi-Fi link state through
+        # CoreWLAN. Static XCFrameworks do not propagate that framework link
+        # requirement to their consumer, so the extension must add it here.
+        "OTHER_LDFLAGS[sdk=macosx*]":
+          - $(inherited)
+          - -framework
+          - CoreWLAN
         MARKETING_VERSION: "0.0.1"
         CURRENT_PROJECT_VERSION: "1"
     dependencies:
