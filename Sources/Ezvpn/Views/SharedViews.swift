@@ -55,18 +55,6 @@ extension View {
     }
 }
 
-/// Trim surrounding whitespace/newlines.
-func trimmed(_ s: String) -> String {
-    s.trimmingCharacters(in: .whitespacesAndNewlines)
-}
-
-/// Split a comma-separated field into trimmed, non-empty entries.
-func splitCSV(_ s: String) -> [String] {
-    s.split(separator: ",")
-        .map { $0.trimmingCharacters(in: .whitespaces) }
-        .filter { !$0.isEmpty }
-}
-
 /// One row of the Active-routes debug section: a caption title over the CIDR
 /// list, monospaced, one per line; "none" when the list is empty (an empty
 /// bypass list is itself a useful signal — nothing was carved out).

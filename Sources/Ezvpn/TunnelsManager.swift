@@ -26,6 +26,7 @@ enum TunnelsManagerError: LocalizedError {
 @MainActor
 final class TunnelsManager: ObservableObject {
     @Published private(set) var tunnels: [TunnelContainer] = []
+    @Published private(set) var menuBarIconState: MenuBarIconState = .disconnected
     @Published var lastError: String?
 
     /// Bundle id of the Packet Tunnel extension (must match project.yml).
@@ -78,6 +79,7 @@ final class TunnelsManager: ObservableObject {
                 }
             }
             tunnels = next.sorted { tunnelNameIsLessThan($0.name, $1.name) }
+            refreshMenuBarIconState()
         } catch {
             lastError = "load failed: \(error.localizedDescription)"
         }
@@ -118,6 +120,7 @@ final class TunnelsManager: ObservableObject {
         }
 
         restoreAfterAddDeactivation(activeTunnel)
+        refreshMenuBarIconState()
         return container
     }
 
@@ -144,6 +147,7 @@ final class TunnelsManager: ObservableObject {
             tunnel.isRestarting = true
             tunnel.startDeactivation()
         }
+        refreshMenuBarIconState()
     }
 
     /// Delete a profile and its saved VPN configuration.
@@ -154,6 +158,7 @@ final class TunnelsManager: ObservableObject {
             throw TunnelsManagerError.system(error)
         }
         tunnels.removeAll { $0.id == tunnel.id }
+        refreshMenuBarIconState()
     }
 
     // MARK: - Activation
@@ -173,15 +178,18 @@ final class TunnelsManager: ObservableObject {
                 Task { @MainActor in await tunnel.startActivation() }
             }
             active.startDeactivation()
+            refreshMenuBarIconState()
             return
         }
         await tunnel.startActivation()
+        refreshMenuBarIconState()
     }
 
     /// Stop `tunnel`.
     func startDeactivation(of tunnel: TunnelContainer) {
         tunnel.isWaiting = false
         tunnel.startDeactivation()
+        refreshMenuBarIconState()
     }
 
     // MARK: - Status routing
@@ -204,10 +212,12 @@ final class TunnelsManager: ObservableObject {
             if tunnel.isRestarting {
                 tunnel.isRestarting = false
                 Task { await tunnel.startActivation() }
+                refreshMenuBarIconState()
                 return
             }
         }
         tunnel.refreshStatus()
+        refreshMenuBarIconState()
     }
 
     // MARK: - Helpers
@@ -241,5 +251,9 @@ final class TunnelsManager: ObservableObject {
         case .failure(.empty): throw TunnelsManagerError.nameEmpty
         case .failure(.duplicate): throw TunnelsManagerError.nameDuplicate
         }
+    }
+
+    private func refreshMenuBarIconState() {
+        menuBarIconState = .resolve(statuses: tunnels.map { $0.manager.connection.status })
     }
 }

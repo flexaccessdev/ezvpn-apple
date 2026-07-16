@@ -26,7 +26,7 @@ final class TunnelContainer: ObservableObject, Identifiable {
     /// Raw system connection status.
     @Published private(set) var status: NEVPNStatus
     @Published private(set) var connectedDate: Date?
-    @Published private(set) var runtimeInfo: RuntimeInfo?
+    @Published private(set) var runtimeInfo: TunnelRuntimeInfo?
     @Published var lastError: String?
 
     /// Set while this tunnel is queued behind another that must deactivate
@@ -57,21 +57,6 @@ final class TunnelContainer: ObservableObject, Identifiable {
             let conf = proto.providerConfiguration
         else { return nil }
         return TunnelProfile.from(providerConfiguration: conf, name: name)
-    }
-
-    /// Decoded reply to the runtime-configuration app message (see
-    /// `PacketTunnelProvider.handleAppMessage`) — what was actually applied to
-    /// the interface. nil while the tunnel is down.
-    struct RuntimeInfo: Equatable {
-        var assignedIP: String?
-        var assignedIP6: String?
-        var mtu: Int?
-        var includedRoutes: [String]
-        var includedRoutes6: [String]
-        var bypassRoutes: [String]
-        var bypassRoutes6: [String]
-        var dnsServers: [String]
-        var dnsMatchDomains: [String]
     }
 
     /// The profile's stable UUID, read from the manager's providerConfiguration.
@@ -191,55 +176,19 @@ final class TunnelContainer: ObservableObject, Identifiable {
     func refreshRuntimeInfo() async {
         guard
             let reply = await sendTunnelQuery(0),
-            let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any]
+            let decoded = TunnelSnapshotDecoder.runtimeInfo(from: reply)
         else {
             runtimeInfo = nil
             return
         }
-        runtimeInfo = RuntimeInfo(
-            assignedIP: obj["assigned_ip"] as? String,
-            assignedIP6: obj["assigned_ip6"] as? String,
-            mtu: obj["mtu"] as? Int,
-            includedRoutes: obj["included_routes"] as? [String] ?? [],
-            includedRoutes6: obj["included_routes6"] as? [String] ?? [],
-            bypassRoutes: obj["bypass_routes"] as? [String] ?? [],
-            bypassRoutes6: obj["bypass_routes6"] as? [String] ?? [],
-            dnsServers: obj["dns_servers"] as? [String] ?? [],
-            dnsMatchDomains: obj["dns_match_domains"] as? [String] ?? []
-        )
-    }
-
-    /// One live iroh connection path, decoded from the tunnel's
-    /// `ezvpn_conn_path` snapshot (see `ConnPathSheet`).
-    struct ConnPath: Identifiable {
-        enum Kind: String {
-            case direct, relay, other
-        }
-
-        let id = UUID()
-        let kind: Kind
-        /// Human line like "Direct 1.2.3.4:52186 (rtt 1ms)".
-        let display: String
-        /// Whether iroh currently routes traffic over this path.
-        let selected: Bool
+        runtimeInfo = decoded
     }
 
     /// Snapshot how the running tunnel currently reaches the server (byte 1):
     /// all discovered iroh paths, empty while none are established.
-    func queryConnPaths() async -> [ConnPath] {
-        guard
-            let reply = await sendTunnelQuery(1),
-            let obj = try? JSONSerialization.jsonObject(with: reply) as? [String: Any],
-            let raw = obj["paths"] as? [[String: Any]]
-        else { return [] }
-        return raw.compactMap { entry in
-            guard let display = entry["display"] as? String else { return nil }
-            return ConnPath(
-                kind: (entry["kind"] as? String).flatMap(ConnPath.Kind.init) ?? .other,
-                display: display,
-                selected: entry["selected"] as? Bool ?? false
-            )
-        }
+    func queryConnPaths() async -> [TunnelConnectionPath] {
+        guard let reply = await sendTunnelQuery(1) else { return [] }
+        return TunnelSnapshotDecoder.connectionPaths(from: reply)
     }
 
     private func fetchLastDisconnectError() {

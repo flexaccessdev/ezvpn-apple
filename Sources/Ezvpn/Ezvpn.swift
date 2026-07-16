@@ -25,12 +25,12 @@ struct Ezvpn: App {
         }
         .defaultSize(width: 480, height: 600)
 
-        MenuBarExtra(
-            "ezvpn",
-            image: "MenuBarIcon"
-        ) {
+        MenuBarExtra {
             MenuBarView()
                 .environmentObject(manager)
+        } label: {
+            Image(manager.menuBarIconState.imageName)
+                .accessibilityLabel(Text(manager.menuBarIconState.accessibilityLabel))
         }
         .menuBarExtraStyle(.menu)
         #else

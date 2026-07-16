@@ -37,6 +37,29 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Test app models
+        run: |
+          xcodebuild test \
+            -project Ezvpn.xcodeproj \
+            -scheme Ezvpn \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData-Tests" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -resultBundlePath "$RUNNER_TEMP/TestResults.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM="" \
+            COMPILER_INDEX_STORE_ENABLE=NO
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results
+          path: ${{ runner.temp }}/TestResults.xcresult
+          if-no-files-found: warn
+
       - name: Build unsigned iOS app
         run: |
           xcodebuild build \

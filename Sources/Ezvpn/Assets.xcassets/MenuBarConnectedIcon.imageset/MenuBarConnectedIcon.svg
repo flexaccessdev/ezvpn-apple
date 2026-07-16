@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Filled variant of MenuBarIcon.svg for an active VPN connection. -->
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="16.5" height="18" viewBox="190 160 644 704">
+  <defs>
+    <mask id="keyhole-cutout">
+      <rect x="0" y="0" width="1024" height="1024" fill="white"/>
+      <circle cx="512" cy="460.8" r="66.56" fill="black"/>
+      <path d="M 483.328 465.92 L 540.672 465.92 L 565.248 614.4 L 458.752 614.4 Z"
+            fill="black"/>
+    </mask>
+  </defs>
+  <path d="M 512 215.04 Q 658.432 215.04 778.24 256 L 778.24 512 Q 778.24 716.8 512 808.96 Q 245.76 716.8 245.76 512 L 245.76 256 Q 365.568 215.04 512 215.04 Z"
+        fill="black" mask="url(#keyhole-cutout)"/>
+</svg>

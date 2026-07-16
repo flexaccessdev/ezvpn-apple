@@ -55,8 +55,16 @@ schemes:
     build:
       targets:
         Ezvpn: all
+        EzvpnTests: [test]
     run:
       config: Debug
+    test:
+      config: Debug
+      gatherCoverageData: true
+      coverageTargets:
+        - Ezvpn
+      targets:
+        - EzvpnTests
     profile:
       config: Release
     archive:
@@ -90,6 +98,27 @@ targets:
       # The app now shares the pure profile model + name validation with the
       # extension (TunnelProfile, validateTunnelName). The extension also links
       # this package for the IP/CIDR primitives.
+      - package: TunnelCore
+        product: TunnelCore
+
+  EzvpnTests:
+    type: bundle.unit-test
+    supportedDestinations: [iOS, macOS]
+    sources:
+      - Tests/EzvpnTests
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        "ARCHS[sdk=macosx*]": arm64
+        # XcodeGen's automatic host path sees this as one multi-destination
+        # target and emits the iOS layout for every SDK. Override only macOS,
+        # whose executable lives below Contents/MacOS.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ezvpn.app/ezvpn"
+        "TEST_HOST[sdk=macosx*]": "$(BUILT_PRODUCTS_DIR)/ezvpn.app/Contents/MacOS/ezvpn"
+    dependencies:
+      # XcodeGen uses this app dependency to configure the correct TEST_HOST
+      # path on both iOS and macOS.
+      - target: Ezvpn
       - package: TunnelCore
         product: TunnelCore
 
