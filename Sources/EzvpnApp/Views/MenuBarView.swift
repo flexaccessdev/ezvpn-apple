@@ -17,12 +17,6 @@ struct MenuBarView: View {
             Label("Open ezvpn", systemImage: "macwindow")
         }
 
-        Button {
-            Task { await manager.reload() }
-        } label: {
-            Label("Refresh profiles", systemImage: "arrow.clockwise")
-        }
-
         Divider()
 
         if manager.tunnels.isEmpty {
