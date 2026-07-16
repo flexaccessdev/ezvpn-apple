@@ -25,13 +25,14 @@ Options:
   -o, --export-path PATH      Output directory for the exported .app.
                               Defaults to ./build/export-macos.
   -m, --method METHOD         Export method. Defaults to developer-id.
-  --allow-provisioning-updates
-                              Let xcodebuild create or update signing assets.
   -h, --help                  Show this help.
 
+Builds always run with -allowProvisioningUpdates so Xcode can create or update
+the Developer ID profiles the Packet Tunnel network-extension entitlement needs
+(mirrors scripts/run-macos.sh).
+
 Environment overrides:
-  TEAM_ID, ARCHIVE_PATH, CONFIGURATION, EXPORT_PATH, METHOD,
-  ALLOW_PROVISIONING_UPDATES
+  TEAM_ID, ARCHIVE_PATH, CONFIGURATION, EXPORT_PATH, METHOD
 USAGE
 }
 
@@ -45,7 +46,6 @@ ARCHIVE_PATH="${ARCHIVE_PATH:-$PROJECT_ROOT/build/${APP_NAME}-macos.xcarchive}"
 CONFIGURATION="${CONFIGURATION:-Release}"
 EXPORT_PATH="${EXPORT_PATH:-$PROJECT_ROOT/build/export-macos}"
 METHOD="${METHOD:-developer-id}"
-ALLOW_PROVISIONING_UPDATES="${ALLOW_PROVISIONING_UPDATES:-0}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -73,10 +73,6 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || die "$1 requires a value"
       METHOD="$2"
       shift 2
-      ;;
-    --allow-provisioning-updates)
-      ALLOW_PROVISIONING_UPDATES=1
-      shift
       ;;
     -h|--help)
       usage
@@ -145,11 +141,6 @@ if [[ -e "$EXPORT_PATH" ]]; then
   /bin/rm -rf "$EXPORT_PATH"
 fi
 
-provisioning_args=()
-if [[ "$ALLOW_PROVISIONING_UPDATES" == "1" ]]; then
-  provisioning_args=(-allowProvisioningUpdates)
-fi
-
 echo "Creating macOS archive:"
 printf '  archive:       %s\n' "$ARCHIVE_PATH"
 printf '  configuration: %s\n' "$CONFIGURATION"
@@ -164,7 +155,7 @@ xcodebuild archive \
   -destination "generic/platform=macOS" \
   -sdk macosx \
   -archivePath "$ARCHIVE_PATH" \
-  "${provisioning_args[@]}" \
+  -allowProvisioningUpdates \
   DEVELOPMENT_TEAM="$TEAM_ID"
 
 /bin/mkdir -p "$EXPORT_PATH"
@@ -191,4 +182,5 @@ printf '  team:    %s\n' "$TEAM_ID"
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_PATH" \
-  -exportOptionsPlist "$EXPORT_OPTIONS_PLIST"
+  -exportOptionsPlist "$EXPORT_OPTIONS_PLIST" \
+  -allowProvisioningUpdates
