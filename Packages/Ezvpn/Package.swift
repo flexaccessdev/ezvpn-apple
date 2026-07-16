@@ -10,19 +10,18 @@ import PackageDescription
 // Default: download the pinned release zip by URL + checksum (reproducible).
 // Bump both when moving to a new release (scripts/bump-xcframework.sh <tag>).
 //
-// Local FFI dev: set EZVPN_LOCAL_XCFRAMEWORK to link a locally built xcframework
-// instead of the release. SPM forbids binary-target paths outside the package
-// root, so the local build is reached through the committed relative symlink
-// local/libezvpn.xcframework points at sibling
-// ../ezvpn/dist/apple/libezvpn.xcframework. Set the var to "1" to use that
-// symlink, or to another path relative to this package dir:
+// Local FFI dev: set EZVPN_LOCAL_XCFRAMEWORK=1 to link a locally built
+// xcframework instead of the release. SPM forbids binary-target paths outside
+// the package root, so the local build is reached through the committed relative
+// symlink local/libezvpn.xcframework, which points at sibling
+// ../ezvpn/dist/apple/libezvpn.xcframework. All other values use the pinned
+// release:
 //   EZVPN_LOCAL_XCFRAMEWORK=1 xcodegen generate && ... xcodebuild ...
 
 func localBinaryTarget() -> Target? {
-    guard let value = ProcessInfo.processInfo.environment["EZVPN_LOCAL_XCFRAMEWORK"],
-          !value.isEmpty else { return nil }
-    let path = (value == "1" || value == "true") ? "local/libezvpn.xcframework" : value
-    return .binaryTarget(name: "libezvpn", path: path)
+    guard ProcessInfo.processInfo.environment["EZVPN_LOCAL_XCFRAMEWORK"] == "1"
+    else { return nil }
+    return .binaryTarget(name: "libezvpn", path: "local/libezvpn.xcframework")
 }
 
 let binaryTarget = localBinaryTarget() ?? .binaryTarget(

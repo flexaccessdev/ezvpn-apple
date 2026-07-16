@@ -21,7 +21,7 @@ options:
 packages:
   # Local package (Packages/Ezvpn) whose binary target downloads the pinned
   # release zip by URL+checksum (reproducible), or links a local build when
-  # EZVPN_LOCAL_XCFRAMEWORK is set (FFI dev). No vendored copy, no fetch script.
+  # EZVPN_LOCAL_XCFRAMEWORK=1 (FFI dev). No vendored copy, no fetch script.
   Ezvpn:
     path: Packages/Ezvpn
   # Pure IP/CIDR primitives (overlap checks, netmask math) shared with the

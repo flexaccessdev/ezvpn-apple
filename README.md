@@ -81,7 +81,8 @@ checksum in `Packages/Ezvpn/Package.swift`).
    ```
 
    > **Local FFI dev** — to build against a locally compiled Rust core instead
-   > of the release, build it in the sibling repo and set `EZVPN_LOCAL_XCFRAMEWORK`:
+   > of the release, build it in the sibling repo and set
+   > `EZVPN_LOCAL_XCFRAMEWORK=1` (all other values select the pinned release):
    >
    > ```sh
    > cd ../ezvpn && ./build-apple.sh release && cd ../ezvpn-ios
