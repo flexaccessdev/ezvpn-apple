@@ -1,4 +1,4 @@
-# ezvpn-ios
+# ezvpn-apple
 
 A universal native iOS + macOS SwiftUI app and Packet Tunnel app extension that
 runs the [`ezvpn`](../ezvpn) IP-over-QUIC tunnel. **Scope:** dual-stack **split
@@ -78,7 +78,7 @@ versions to the release version).
 1. **Generate the Xcode project** (SPM fetches the pinned xcframework):
 
    ```sh
-   cd ../ezvpn-ios
+   cd ../ezvpn-apple
    xcodegen generate
    open Ezvpn.xcodeproj
    ```
@@ -88,7 +88,7 @@ versions to the release version).
    > `EZVPN_LOCAL_XCFRAMEWORK=1` (all other values select the pinned release):
    >
    > ```sh
-   > cd ../ezvpn && ./build-apple.sh release && cd ../ezvpn-ios
+   > cd ../ezvpn && ./build-apple.sh release && cd ../ezvpn-apple
    > scripts/run-macos.sh
    > ```
    >
