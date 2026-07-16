@@ -3,9 +3,9 @@
 // own team; the committed Developer.xcconfig #include?s it automatically.
 DEVELOPMENT_TEAM =
 
-// Optional. Bundle-id prefix for the app + extension. Leave commented to use
-// the committed default (com.andrewtheguy.ezvpn) — but those App IDs belong to
-// the maintainer's team, so signing under your own team needs a prefix your
-// team can register. Uncomment and set one you own (the Network Extension
-// requires explicit, non-wildcard App IDs, so this must be a real prefix):
+// Bundle-id prefix for the app + extension. The committed default in
+// Developer.xcconfig is the placeholder com.example.ezvpn, which is registered
+// to no team and so builds only unsigned. To sign, set a prefix your team owns
+// (the Network Extension requires explicit, non-wildcard App IDs, so this must
+// be a real prefix, first-come-first-served across all Apple accounts):
 // BUNDLE_ID_PREFIX = com.yourname.ezvpn

@@ -10,14 +10,14 @@ import TunnelCore
 /// configure the tunnel interface from the server's handshake, hand the `utun`
 /// fd to Rust, and let Rust run the iroh/QUIC datagram loop.
 class PacketTunnelProvider: NEPacketTunnelProvider {
-    private let log = OSLog(subsystem: "com.andrewtheguy.ezvpn.PacketTunnel", category: "tunnel")
+    private let log = OSLog(subsystem: "ezvpn.PacketTunnel", category: "tunnel")
     private var handle: OpaquePointer?
 
     /// Serializes backend teardown and runtime-config queries, mirroring
     /// WireGuardAdapter's private work queue: `stopTunnel` completes only
     /// after `ezvpn_stop` has actually returned, and never blocks the
     /// provider's calling queue while the Rust side shuts down.
-    private let workQueue = DispatchQueue(label: "com.andrewtheguy.ezvpn.PacketTunnel.workQueue")
+    private let workQueue = DispatchQueue(label: "ezvpn.PacketTunnel.workQueue")
 
     /// What was actually applied to the interface (assigned addresses, tunnel
     /// routes, bypass routes, MTU), kept so the app can query it over
@@ -449,7 +449,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // MARK: - Helpers
 
     private static func error(_ message: String) -> NSError {
-        NSError(domain: "com.andrewtheguy.ezvpn", code: 1,
+        NSError(domain: "ezvpn", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: message])
     }
 

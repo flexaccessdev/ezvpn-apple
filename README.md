@@ -78,10 +78,10 @@ under a real team.
 You must sign it under your **own** paid Apple Developer team (see
 [Prerequisites](#prerequisites)), which means **building from source, not
 re-signing the download** — the app's bundle id is compiled in, so it can't be
-repointed inside a prebuilt bundle. The default bundle-id prefix
-(`com.andrewtheguy.ezvpn`) is the maintainer's; those App IDs belong to their
-team and the Network Extension needs explicit, non-wildcard App IDs, so you
-can't provision them under yours.
+repointed inside a prebuilt bundle. The committed bundle-id prefix is the
+placeholder `com.example.ezvpn` (registered to no team, so the release builds
+are unsigned); the Network Extension needs explicit, non-wildcard App IDs your
+team owns, so you supply your own prefix and build.
 
 So follow [Build & run](#build--run): copy `Developer.local.xcconfig.sample` to
 `Developer.local.xcconfig`, set your `DEVELOPMENT_TEAM` **and** a
@@ -144,13 +144,12 @@ versions to the release version).
    `Developer.local.xcconfig`, set `DEVELOPMENT_TEAM`, and re-run
    `xcodegen generate`.
 
-   The bundle-id prefix defaults to `com.andrewtheguy.ezvpn` (the maintainer's,
-   committed in `Developer.xcconfig`). Those App IDs belong to the maintainer's
-   team, so to sign under your own team set `BUNDLE_ID_PREFIX` in the same
-   `Developer.local.xcconfig` to a prefix you own — nothing else to edit: the
-   app id, `.PacketTunnel` extension id, keychain access group, and the
-   extension id the app targets (`TunnelsManager.providerBundleID`, derived from
-   `Bundle.main`) all follow it.
+   The bundle-id prefix committed in `Developer.xcconfig` is the placeholder
+   `com.example.ezvpn`, which signs under no team (it only builds unsigned). To
+   sign, set `BUNDLE_ID_PREFIX` in the same `Developer.local.xcconfig` to a
+   prefix your team owns — nothing else to edit: the app id, `.PacketTunnel`
+   extension id, keychain access group, and the extension id the app targets
+   (`TunnelsManager.providerBundleID`, derived from `Bundle.main`) all follow it.
 
 3. **Run the app.** For macOS, build and open the native app with:
 
@@ -224,11 +223,12 @@ shapes.
 
 ## Logs
 
-The extension logs to the unified log (subsystem
-`com.andrewtheguy.ezvpn.PacketTunnel`). Watch with:
+The extension logs to the unified log under the fixed subsystem `ezvpn.PacketTunnel`
+(a neutral constant, independent of the app's bundle id / `BUNDLE_ID_PREFIX`, so
+it is the same whatever prefix you build under). Watch with:
 
 ```sh
-log stream --predicate 'subsystem == "com.andrewtheguy.ezvpn.PacketTunnel"' --level debug
+log stream --predicate 'subsystem == "ezvpn.PacketTunnel"' --level debug
 ```
 
 Rust-side logs go to stderr (honors `RUST_LOG`, default `info`) and are captured

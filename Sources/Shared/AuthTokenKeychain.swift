@@ -8,7 +8,7 @@ import Security
 /// `NETunnelProviderProtocol.passwordReference`. Both targets carry the same
 /// keychain-access-group entitlement.
 enum AuthTokenKeychain {
-    static let service = "com.andrewtheguy.ezvpn.auth-token"
+    static let service = "ezvpn.auth-token"
     static let accessGroupInfoKey = "EZVPNKeychainAccessGroup"
 
     static func store(_ token: String, for profileID: UUID) throws -> Data {

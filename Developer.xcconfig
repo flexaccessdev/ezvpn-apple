@@ -9,11 +9,11 @@ DEVELOPMENT_TEAM =
 
 // Reverse-DNS prefix for the app + extension bundle ids (project.yml expands
 // $(BUNDLE_ID_PREFIX) into PRODUCT_BUNDLE_IDENTIFIER and the keychain group).
-// This committed default is the maintainer's own prefix; the App IDs under it
-// belong to their team. Sign under a different team by overriding this in
-// Developer.local.xcconfig with a prefix your team owns (see the sample), the
-// same way you set DEVELOPMENT_TEAM.
-BUNDLE_ID_PREFIX = com.andrewtheguy.ezvpn
+// This committed value is a placeholder: com.example.* is reserved (RFC 2606)
+// and registered to no team, so it only produces unsigned builds (e.g. CI).
+// To sign, override it in the gitignored Developer.local.xcconfig with a prefix
+// your team owns (see the sample), the same way you set DEVELOPMENT_TEAM.
+BUNDLE_ID_PREFIX = com.example.ezvpn
 
 // Last so a value in Developer.local.xcconfig overrides the defaults above.
 #include? "Developer.local.xcconfig"
