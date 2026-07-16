@@ -13,8 +13,10 @@ Usage:
   scripts/create-archive-macos.sh --team-id <TEAM_ID> [options]
 
 Builds a macOS .xcarchive and exports it to a signed .app in one step.
-Defaults to Developer ID distribution (direct download, outside the App Store).
-Notarize and staple the exported .app separately (xcrun notarytool / stapler).
+Defaults to development ("debugging") signing, matching create-archive-ios.sh
+and run-macos.sh: the exported .app runs on provisioned/development machines.
+(A Developer ID network-extension app must ship the tunnel as a System
+Extension, not the current app extension, so -m developer-id will not export.)
 
 Options:
   -t, --team-id TEAM_ID       Developer Team ID.
@@ -24,7 +26,7 @@ Options:
   -c, --configuration NAME    Build configuration. Defaults to Release.
   -o, --export-path PATH      Output directory for the exported .app.
                               Defaults to ./build/export-macos.
-  -m, --method METHOD         Export method. Defaults to developer-id.
+  -m, --method METHOD         Export method. Defaults to debugging.
   -h, --help                  Show this help.
 
 Builds always run with -allowProvisioningUpdates so Xcode can create or update
@@ -45,7 +47,7 @@ TEAM_ID="${TEAM_ID:-}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-$PROJECT_ROOT/build/${APP_NAME}-macos.xcarchive}"
 CONFIGURATION="${CONFIGURATION:-Release}"
 EXPORT_PATH="${EXPORT_PATH:-$PROJECT_ROOT/build/export-macos}"
-METHOD="${METHOD:-developer-id}"
+METHOD="${METHOD:-debugging}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
