@@ -37,6 +37,20 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Test app models
+        run: |
+          xcodebuild test \
+            -project Ezvpn.xcodeproj \
+            -scheme Ezvpn \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData-Tests" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM="" \
+            COMPILER_INDEX_STORE_ENABLE=NO
+
       - name: Build unsigned iOS app
         run: |
           xcodebuild build \

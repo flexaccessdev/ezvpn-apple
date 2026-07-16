@@ -14,16 +14,7 @@ struct TunnelEditView: View {
     @EnvironmentObject private var manager: TunnelsManager
     @Environment(\.dismiss) private var dismiss
 
-    @State private var name = ""
-    @State private var serverNodeID = ""
-    @State private var authToken = ""
-    @State private var relayURLs = ""
-    @State private var routes = ""
-    @State private var routes6 = ""
-    #if os(iOS)
-    @State private var dnsServers = ""
-    @State private var dnsMatchDomains = ""
-    #endif
+    @State private var form = TunnelProfileForm()
     @State private var error: String?
     @State private var saving = false
     @State private var didLoad = false
@@ -34,39 +25,36 @@ struct TunnelEditView: View {
     }
 
     private var canSave: Bool {
-        !trimmed(name).isEmpty
-            && !trimmed(serverNodeID).isEmpty
-            && !trimmed(authToken).isEmpty
-            && !saving
+        form.hasRequiredFields && !saving
     }
 
     var body: some View {
         Form {
             Section("Profile") {
                 LabeledField("Name") {
-                    TextField("", text: $name)
+                    TextField("", text: $form.name)
                         .fieldStyle()
                 }
             }
 
             Section("Server") {
                 LabeledField("Server node id") {
-                    TextField("", text: $serverNodeID)
+                    TextField("", text: $form.serverNodeID)
                         .fieldStyle()
                 }
                 LabeledField("Auth token") {
-                    SecureField("", text: $authToken)
+                    SecureField("", text: $form.authToken)
                         .fieldStyle()
                 }
                 LabeledField("Relay URLs", hint: "comma-separated, optional") {
-                    TextField("", text: $relayURLs)
+                    TextField("", text: $form.relayURLs)
                         .fieldStyle()
                 }
             }
 
             Section {
                 LabeledField("IPv4 routes", hint: "comma-separated, optional") {
-                    TextField("", text: $routes)
+                    TextField("", text: $form.routes)
                         .fieldStyle()
                 }
             } header: {
@@ -77,7 +65,7 @@ struct TunnelEditView: View {
 
             Section("Split tunnel (IPv6 CIDRs)") {
                 LabeledField("IPv6 routes", hint: "comma-separated, optional") {
-                    TextField("", text: $routes6)
+                    TextField("", text: $form.routes6)
                         .fieldStyle()
                 }
             }
@@ -85,11 +73,11 @@ struct TunnelEditView: View {
             #if os(iOS)
             Section {
                 LabeledField("DNS servers", hint: "comma-separated IPs, optional") {
-                    TextField("", text: $dnsServers)
+                    TextField("", text: $form.dnsServers)
                         .fieldStyle()
                 }
                 LabeledField("Match domains", hint: "comma-separated, optional") {
-                    TextField("", text: $dnsMatchDomains)
+                    TextField("", text: $form.dnsMatchDomains)
                         .fieldStyle()
                 }
             } header: {
@@ -130,37 +118,13 @@ struct TunnelEditView: View {
         guard !didLoad else { return }
         didLoad = true
         guard case .edit(let tunnel) = mode, let profile = tunnel.profile else { return }
-        name = profile.name
-        serverNodeID = profile.serverNodeID
-        authToken = profile.authToken
-        relayURLs = profile.relayURLs.joined(separator: ", ")
-        routes = profile.routes.joined(separator: ", ")
-        routes6 = profile.routes6.joined(separator: ", ")
-        #if os(iOS)
-        dnsServers = profile.dnsServers.joined(separator: ", ")
-        dnsMatchDomains = profile.dnsMatchDomains.joined(separator: ", ")
-        #endif
+        form = TunnelProfileForm(profile: profile)
     }
 
     private func save() async {
         error = nil
         saving = true
         defer { saving = false }
-
-        #if os(iOS)
-        let dnsServerList = splitCSV(dnsServers)
-        let dnsMatchDomainList = splitCSV(dnsMatchDomains).map(normalizedDNSMatchDomain)
-        if let dnsError = splitDNSValidationError(
-            servers: dnsServerList, matchDomains: dnsMatchDomainList
-        ) {
-            error = dnsError
-            return
-        }
-        #else
-        // macOS keeps the system's existing DNS configuration untouched.
-        let dnsServerList: [String] = []
-        let dnsMatchDomainList: [String] = []
-        #endif
 
         // Preserve the stable id on edit; mint a fresh one on add.
         let id: UUID
@@ -170,19 +134,13 @@ struct TunnelEditView: View {
             id = UUID()
         }
 
-        let profile = TunnelProfile(
-            id: id,
-            name: trimmed(name),
-            serverNodeID: trimmed(serverNodeID),
-            authToken: trimmed(authToken),
-            relayURLs: splitCSV(relayURLs),
-            routes: splitCSV(routes),
-            routes6: splitCSV(routes6),
-            dnsServers: dnsServerList,
-            dnsMatchDomains: dnsMatchDomainList
-        )
-
         do {
+            #if os(iOS)
+            let profile = try form.makeProfile(id: id, includesDNS: true)
+            #else
+            let profile = try form.makeProfile(id: id, includesDNS: false)
+            #endif
+
             switch mode {
             case .add:
                 try await manager.add(profile)

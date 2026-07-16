@@ -150,6 +150,16 @@ so it can be tested natively on the Mac, outside the app and extension targets:
 cd Packages/TunnelCore && swift test
 ```
 
+App-model tests cover profile-editor conversion, packet-tunnel reply decoding,
+VPN status presentation, and the `NETunnelProviderManager` profile wrapper. Run
+them natively on the Mac after generating the project:
+
+```sh
+xcodegen generate
+xcodebuild test -project Ezvpn.xcodeproj -scheme Ezvpn \
+  -destination 'platform=macOS,arch=arm64'
+```
+
 ## How it fits together
 
 ```

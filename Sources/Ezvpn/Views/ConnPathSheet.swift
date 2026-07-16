@@ -11,10 +11,10 @@ import SwiftUI
 /// round trip to the tunnel extension, hence async.
 struct ConnPathSheet: View {
     /// Snapshots the live paths right now (`TunnelContainer.queryConnPaths()`).
-    let query: () async -> [TunnelContainer.ConnPath]
+    let query: () async -> [TunnelConnectionPath]
 
     @Environment(\.dismiss) private var dismiss
-    @State private var paths: [TunnelContainer.ConnPath] = []
+    @State private var paths: [TunnelConnectionPath] = []
 
     var body: some View {
         NavigationStack {
@@ -62,7 +62,7 @@ struct ConnPathSheet: View {
 /// One path row: a transport-colored dot, the human-readable path line, and an
 /// "active" pill on the path iroh currently routes over.
 private struct ConnPathRow: View {
-    let path: TunnelContainer.ConnPath
+    let path: TunnelConnectionPath
 
     var body: some View {
         HStack(spacing: 10) {
