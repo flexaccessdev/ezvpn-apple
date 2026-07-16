@@ -66,6 +66,15 @@ final class TunnelProfileFormTests: XCTestCase {
         }
     }
 
+    func testMakeProfileRejectsMissingRequiredFields() {
+        var form = requiredForm()
+        form.authToken = "   "
+
+        XCTAssertThrowsError(try form.makeProfile(id: UUID(), includesDNS: true)) { error in
+            XCTAssertEqual(error as? TunnelProfileFormError, .missingRequiredFields)
+        }
+    }
+
     func testMacOSConversionDropsDNSFields() throws {
         var form = requiredForm()
         form.dnsServers = "not-an-ip"

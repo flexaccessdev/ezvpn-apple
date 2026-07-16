@@ -40,6 +40,10 @@ struct TunnelProfileForm: Equatable {
     /// DNS fields are accepted only on iOS. macOS deliberately preserves the
     /// host's DNS configuration, so its caller passes `includesDNS: false`.
     func makeProfile(id: UUID, includesDNS: Bool) throws -> TunnelProfile {
+        guard hasRequiredFields else {
+            throw TunnelProfileFormError.missingRequiredFields
+        }
+
         let dnsServerList = includesDNS ? Self.splitCSV(dnsServers) : []
         let dnsMatchDomainList = includesDNS
             ? Self.splitCSV(dnsMatchDomains).map(normalizedDNSMatchDomain)
@@ -77,10 +81,12 @@ struct TunnelProfileForm: Equatable {
 }
 
 enum TunnelProfileFormError: LocalizedError, Equatable {
+    case missingRequiredFields
     case invalidDNS(String)
 
     var errorDescription: String? {
         switch self {
+        case .missingRequiredFields: "Name, server node id, and auth token are required."
         case .invalidDNS(let message): message
         }
     }
