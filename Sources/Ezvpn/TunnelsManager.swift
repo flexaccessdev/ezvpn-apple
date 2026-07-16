@@ -29,38 +29,11 @@ final class TunnelsManager: ObservableObject {
     @Published private(set) var menuBarIconState: MenuBarIconState = .disconnected
     @Published var lastError: String?
 
-    /// Bundle id of the embedded Packet Tunnel extension, discovered at runtime
-    /// from the app's PlugIns directory (the `.appex` whose extension point is
-    /// the packet-tunnel provider) and read from its own `CFBundleIdentifier`.
-    /// Nothing here hardcodes the app or extension id, so it stays correct under
-    /// any $(BUNDLE_ID_PREFIX) the build was signed with.
-    private let providerBundleID = TunnelsManager.discoverProviderBundleID()
-
-    private static func discoverProviderBundleID() -> String {
-        // A packet-tunnel host app always embeds exactly one such extension; a
-        // build where it is missing is broken, not a state to recover from.
-        guard
-            let plugInsURL = Bundle.main.builtInPlugInsURL,
-            let entries = try? FileManager.default.contentsOfDirectory(
-                at: plugInsURL, includingPropertiesForKeys: nil
-            )
-        else {
-            fatalError("no PlugIns directory — Packet Tunnel extension not embedded")
-        }
-
-        for url in entries where url.pathExtension == "appex" {
-            guard
-                let bundle = Bundle(url: url),
-                let ext = bundle.infoDictionary?["NSExtension"] as? [String: Any],
-                ext["NSExtensionPointIdentifier"] as? String
-                    == "com.apple.networkextension.packet-tunnel",
-                let id = bundle.bundleIdentifier
-            else { continue }
-            return id
-        }
-
-        fatalError("no packet-tunnel app extension found in \(plugInsURL.path)")
-    }
+    /// Bundle id of the Packet Tunnel extension. It is always the app's own
+    /// bundle id plus the ".PacketTunnel" suffix (see PRODUCT_BUNDLE_IDENTIFIER
+    /// in project.yml), so deriving it from Bundle.main keeps it correct under
+    /// any $(BUNDLE_ID_PREFIX) the build was signed with — no hardcoded prefix.
+    private let providerBundleID = Bundle.main.bundleIdentifier! + ".PacketTunnel"
 
     private var statusObserver: NSObjectProtocol?
     private var configObserver: NSObjectProtocol?
