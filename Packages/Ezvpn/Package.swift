@@ -8,7 +8,8 @@ import PackageDescription
 // path, so it always uses this manifest; there is no vendored copy.
 //
 // Default: download the pinned release zip by URL + checksum (reproducible).
-// Bump both when moving to a new release (scripts/bump-xcframework.sh <tag>).
+// Bump the artifact pin and app/extension marketing versions together with
+// scripts/bump-xcframework.sh <tag>.
 //
 // Local FFI dev: set EZVPN_LOCAL_XCFRAMEWORK=1 to link a locally built
 // xcframework instead of the release. SPM forbids binary-target paths outside
