@@ -67,6 +67,12 @@ final class AppModelTests: XCTestCase {
             ),
             id
         )
+
+        let managerWithoutCredential = makeManager(
+            configuration: [ProviderConfigKey.profileID: id.uuidString],
+            passwordReference: nil
+        )
+        XCTAssertNil(TunnelContainer.profileID(of: managerWithoutCredential))
     }
 
     func testContainerInitializesFromManagerAndDecodesProfile() throws {
@@ -74,7 +80,6 @@ final class AppModelTests: XCTestCase {
             id: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
             name: "Configuration name is not authoritative",
             serverNodeID: "node-id",
-            authToken: "token",
             relayURLs: ["relay"],
             routes: ["10.0.0.0/8"],
             routes6: ["fd00::/8"],
@@ -101,6 +106,26 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(TunnelContainer(manager: makeManager(configuration: [:])))
     }
 
+    func testAuthTokenKeychainRoundTripAndUpdate() throws {
+        let id = UUID()
+        defer { try? AuthTokenKeychain.delete(for: id) }
+
+        let firstReference = try AuthTokenKeychain.store("first-token", for: id)
+        XCTAssertEqual(
+            try AuthTokenKeychain.token(for: firstReference),
+            "first-token"
+        )
+
+        let updatedReference = try AuthTokenKeychain.store("updated-token", for: id)
+        XCTAssertEqual(
+            try AuthTokenKeychain.token(for: updatedReference),
+            "updated-token"
+        )
+
+        try AuthTokenKeychain.delete(for: id)
+        XCTAssertThrowsError(try AuthTokenKeychain.token(for: updatedReference))
+    }
+
     func testAttachReplacesManagerButPreservesFallbackName() throws {
         let id = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
         let configuration = [ProviderConfigKey.profileID: id.uuidString]
@@ -116,12 +141,14 @@ final class AppModelTests: XCTestCase {
 
     private func makeManager(
         name: String? = nil,
-        configuration: [String: Any]
+        configuration: [String: Any],
+        passwordReference: Data? = Data([0x01])
     ) -> NETunnelProviderManager {
         let proto = NETunnelProviderProtocol()
         proto.providerBundleIdentifier = "com.example.PacketTunnel"
         proto.serverAddress = "node"
         proto.providerConfiguration = configuration
+        proto.passwordReference = passwordReference
 
         let manager = NETunnelProviderManager()
         manager.localizedDescription = name

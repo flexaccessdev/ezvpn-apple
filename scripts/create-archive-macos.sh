@@ -13,8 +13,10 @@ Usage:
   scripts/create-archive-macos.sh --team-id <TEAM_ID> [options]
 
 Builds a macOS .xcarchive and exports it to a signed .app in one step.
-Defaults to Developer ID distribution (direct download, outside the App Store).
-Notarize and staple the exported .app separately (xcrun notarytool / stapler).
+Defaults to development ("debugging") signing, matching create-archive-ios.sh
+and run-macos.sh: the exported .app runs on provisioned/development machines.
+(A Developer ID network-extension app must ship the tunnel as a System
+Extension, not the current app extension, so -m developer-id will not export.)
 
 Options:
   -t, --team-id TEAM_ID       Developer Team ID.
@@ -24,14 +26,21 @@ Options:
   -c, --configuration NAME    Build configuration. Defaults to Release.
   -o, --export-path PATH      Output directory for the exported .app.
                               Defaults to ./build/export-macos.
-  -m, --method METHOD         Export method. Defaults to developer-id.
-  --allow-provisioning-updates
-                              Let xcodebuild create or update signing assets.
+  -m, --method METHOD         Export method. Defaults to debugging.
   -h, --help                  Show this help.
 
+Both build steps (archive and export) run with -allowProvisioningUpdates so
+Xcode can create or update the development signing profiles the Packet Tunnel
+network-extension entitlement needs (mirrors scripts/run-macos.sh). That path
+is NOT offline or non-mutating: it requires an Apple Developer account signed
+in to Xcode and network access to Apple, and it may create or modify signing
+assets on the developer portal. Where credentials or network are unavailable
+(e.g. locked-down CI), pre-install the required profiles/certificates and drop
+the two -allowProvisioningUpdates flags below, or feed in a pre-signed archive;
+the default leaves them on.
+
 Environment overrides:
-  TEAM_ID, ARCHIVE_PATH, CONFIGURATION, EXPORT_PATH, METHOD,
-  ALLOW_PROVISIONING_UPDATES
+  TEAM_ID, ARCHIVE_PATH, CONFIGURATION, EXPORT_PATH, METHOD
 USAGE
 }
 
@@ -44,8 +53,7 @@ TEAM_ID="${TEAM_ID:-}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-$PROJECT_ROOT/build/${APP_NAME}-macos.xcarchive}"
 CONFIGURATION="${CONFIGURATION:-Release}"
 EXPORT_PATH="${EXPORT_PATH:-$PROJECT_ROOT/build/export-macos}"
-METHOD="${METHOD:-developer-id}"
-ALLOW_PROVISIONING_UPDATES="${ALLOW_PROVISIONING_UPDATES:-0}"
+METHOD="${METHOD:-debugging}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -73,10 +81,6 @@ while [[ $# -gt 0 ]]; do
       [[ $# -ge 2 ]] || die "$1 requires a value"
       METHOD="$2"
       shift 2
-      ;;
-    --allow-provisioning-updates)
-      ALLOW_PROVISIONING_UPDATES=1
-      shift
       ;;
     -h|--help)
       usage
@@ -145,11 +149,6 @@ if [[ -e "$EXPORT_PATH" ]]; then
   /bin/rm -rf "$EXPORT_PATH"
 fi
 
-provisioning_args=()
-if [[ "$ALLOW_PROVISIONING_UPDATES" == "1" ]]; then
-  provisioning_args=(-allowProvisioningUpdates)
-fi
-
 echo "Creating macOS archive:"
 printf '  archive:       %s\n' "$ARCHIVE_PATH"
 printf '  configuration: %s\n' "$CONFIGURATION"
@@ -164,7 +163,7 @@ xcodebuild archive \
   -destination "generic/platform=macOS" \
   -sdk macosx \
   -archivePath "$ARCHIVE_PATH" \
-  "${provisioning_args[@]}" \
+  -allowProvisioningUpdates \
   DEVELOPMENT_TEAM="$TEAM_ID"
 
 /bin/mkdir -p "$EXPORT_PATH"
@@ -191,4 +190,5 @@ printf '  team:    %s\n' "$TEAM_ID"
 xcodebuild -exportArchive \
   -archivePath "$ARCHIVE_PATH" \
   -exportPath "$EXPORT_PATH" \
-  -exportOptionsPlist "$EXPORT_OPTIONS_PLIST"
+  -exportOptionsPlist "$EXPORT_OPTIONS_PLIST" \
+  -allowProvisioningUpdates

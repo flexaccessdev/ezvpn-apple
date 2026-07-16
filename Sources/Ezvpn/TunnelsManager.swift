@@ -29,8 +29,11 @@ final class TunnelsManager: ObservableObject {
     @Published private(set) var menuBarIconState: MenuBarIconState = .disconnected
     @Published var lastError: String?
 
-    /// Bundle id of the Packet Tunnel extension (must match project.yml).
-    private let providerBundleID = "com.andrewtheguy.ezvpn.PacketTunnel"
+    /// Bundle id of the Packet Tunnel extension. It is always the app's own
+    /// bundle id plus the ".PacketTunnel" suffix (see PRODUCT_BUNDLE_IDENTIFIER
+    /// in project.yml), so deriving it from Bundle.main keeps it correct under
+    /// any $(BUNDLE_ID_PREFIX) the build was signed with — no hardcoded prefix.
+    private let providerBundleID = Bundle.main.bundleIdentifier! + ".PacketTunnel"
 
     private var statusObserver: NSObjectProtocol?
     private var configObserver: NSObjectProtocol?
@@ -62,8 +65,8 @@ final class TunnelsManager: ObservableObject {
 
     /// Re-read all VPN preferences, re-attaching reloaded managers to existing
     /// containers (so identity, observers, and in-flight activation state
-    /// survive) and dropping any removed outside the app. Managers with no
-    /// stable `profile_id` (e.g. from a pre-multi-profile build) are ignored.
+    /// survive) and dropping any removed outside the app. Managers without the
+    /// current stable-id + Keychain-reference format are ignored.
     func reload() async {
         do {
             let managers = try await NETunnelProviderManager.loadAllFromPreferences()
@@ -92,21 +95,38 @@ final class TunnelsManager: ObservableObject {
     /// previously active one is restarted so adding a profile doesn't silently
     /// drop the user's connection.
     @discardableResult
-    func add(_ profile: TunnelProfile) async throws -> TunnelContainer {
+    func add(_ profile: TunnelProfile, authToken: String) async throws -> TunnelContainer {
         let name = try validatedName(profile.name, excluding: nil)
         var profile = profile
         profile.name = name
 
         let activeTunnel = tunnels.first { $0.status.isInOperation }
 
+        let passwordReference: Data
+        do {
+            passwordReference = try AuthTokenKeychain.store(
+                authToken, for: profile.id)
+        } catch {
+            throw TunnelsManagerError.system(error)
+        }
+
         let manager = NETunnelProviderManager()
-        manager.protocolConfiguration = makeProtocol(for: profile)
+        manager.protocolConfiguration = makeProtocol(
+            for: profile, passwordReference: passwordReference)
         manager.localizedDescription = name
         manager.isEnabled = true
         do {
             try await manager.saveToPreferences()
             try await manager.loadFromPreferences()
         } catch {
+            // Roll back the token stored for this never-saved profile. Its id is
+            // a fresh UUID no saved profile references, so a swallowed delete
+            // failure would leak the Keychain item forever — surface it instead.
+            do {
+                try AuthTokenKeychain.delete(for: profile.id)
+            } catch let rollbackError {
+                throw compoundSystemError(primary: error, rollback: [rollbackError])
+            }
             throw TunnelsManagerError.system(error)
         }
 
@@ -126,19 +146,64 @@ final class TunnelsManager: ObservableObject {
 
     /// Rewrite an existing profile's configuration and/or name. If it is running
     /// and the config changed, restart it so the change takes effect.
-    func modify(_ tunnel: TunnelContainer, to profile: TunnelProfile) async throws {
+    func modify(
+        _ tunnel: TunnelContainer,
+        to profile: TunnelProfile,
+        authToken: String
+    ) async throws {
         let name = try validatedName(profile.name, excluding: tunnel)
         var profile = profile
         profile.name = name
 
-        tunnel.manager.protocolConfiguration = makeProtocol(for: profile)
+        // Read the existing token before any mutation so a rollback can restore
+        // it. A genuinely absent token (nothing to restore) is fine; a read
+        // failure must abort before we touch the Keychain or preferences.
+        let previousToken: String?
+        do {
+            previousToken = try tunnel.authToken()
+        } catch AuthTokenKeychainError.missingPersistentReference {
+            previousToken = nil
+        } catch {
+            throw TunnelsManagerError.system(error)
+        }
+        let passwordReference: Data
+        do {
+            passwordReference = try AuthTokenKeychain.store(
+                authToken, for: profile.id)
+        } catch {
+            throw TunnelsManagerError.system(error)
+        }
+
+        tunnel.manager.protocolConfiguration = makeProtocol(
+            for: profile, passwordReference: passwordReference)
         tunnel.manager.localizedDescription = name
         tunnel.manager.isEnabled = true
         do {
             try await tunnel.manager.saveToPreferences()
             try await tunnel.manager.loadFromPreferences()
         } catch {
-            throw TunnelsManagerError.system(error)
+            // Best-effort rollback of both the Keychain token and the in-memory
+            // manager config; attempt both, but surface any rollback failure
+            // instead of hiding it. The preference failure stays the primary.
+            var rollbackErrors: [Error] = []
+            do {
+                if let previousToken {
+                    _ = try AuthTokenKeychain.store(previousToken, for: profile.id)
+                } else {
+                    try AuthTokenKeychain.delete(for: profile.id)
+                }
+            } catch let rollbackError {
+                rollbackErrors.append(rollbackError)
+            }
+            do {
+                try await tunnel.manager.loadFromPreferences()
+            } catch let rollbackError {
+                rollbackErrors.append(rollbackError)
+            }
+            if rollbackErrors.isEmpty {
+                throw TunnelsManagerError.system(error)
+            }
+            throw compoundSystemError(primary: error, rollback: rollbackErrors)
         }
         tunnel.setName(name)
         tunnels.sort { tunnelNameIsLessThan($0.name, $1.name) }
@@ -159,6 +224,29 @@ final class TunnelsManager: ObservableObject {
         }
         tunnels.removeAll { $0.id == tunnel.id }
         refreshMenuBarIconState()
+        do {
+            try AuthTokenKeychain.delete(for: tunnel.id)
+        } catch {
+            throw TunnelsManagerError.system(error)
+        }
+    }
+
+    /// Combine a primary failure with one or more rollback failures so the
+    /// rollback problem is surfaced rather than silently dropped, while the
+    /// primary failure stays the root cause (both localized and chained).
+    private func compoundSystemError(
+        primary: Error, rollback rollbackErrors: [Error]
+    ) -> TunnelsManagerError {
+        let detail = rollbackErrors
+            .map { $0.localizedDescription }
+            .joined(separator: "; ")
+        let combined = NSError(domain: "ezvpn", code: 1, userInfo: [
+            NSLocalizedDescriptionKey:
+                "\(primary.localizedDescription) "
+                + "Rolling back the change also failed: \(detail)",
+            NSUnderlyingErrorKey: primary as NSError,
+        ])
+        return .system(combined)
     }
 
     // MARK: - Activation
@@ -235,12 +323,16 @@ final class TunnelsManager: ObservableObject {
         }
     }
 
-    private func makeProtocol(for profile: TunnelProfile) -> NETunnelProviderProtocol {
+    private func makeProtocol(
+        for profile: TunnelProfile,
+        passwordReference: Data
+    ) -> NETunnelProviderProtocol {
         let proto = NETunnelProviderProtocol()
         proto.providerBundleIdentifier = providerBundleID
         // serverAddress is shown in Settings > VPN; node id is fine here.
         proto.serverAddress = profile.serverNodeID
         proto.providerConfiguration = profile.providerConfiguration()
+        proto.passwordReference = passwordReference
         return proto
     }
 

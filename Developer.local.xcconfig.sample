@@ -2,3 +2,10 @@
 // Team ID. Developer.local.xcconfig is gitignored so each developer uses their
 // own team; the committed Developer.xcconfig #include?s it automatically.
 DEVELOPMENT_TEAM =
+
+// Bundle-id prefix for the app + extension. The committed default in
+// Developer.xcconfig is the placeholder com.example.ezvpn, which is registered
+// to no team and so builds only unsigned. To sign, set a prefix your team owns
+// (the Network Extension requires explicit, non-wildcard App IDs, so this must
+// be a real prefix, first-come-first-served across all Apple accounts):
+// BUNDLE_ID_PREFIX = com.yourname.ezvpn

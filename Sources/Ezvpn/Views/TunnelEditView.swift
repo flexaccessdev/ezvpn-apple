@@ -117,8 +117,20 @@ struct TunnelEditView: View {
     private func loadIfNeeded() {
         guard !didLoad else { return }
         didLoad = true
-        guard case .edit(let tunnel) = mode, let profile = tunnel.profile else { return }
-        form = TunnelProfileForm(profile: profile)
+        guard case .edit(let tunnel) = mode else { return }
+        do {
+            guard let profile = tunnel.profile else {
+                error = "The saved VPN profile is malformed."
+                return
+            }
+            form = TunnelProfileForm(
+                profile: profile,
+                authToken: try tunnel.authToken()
+            )
+        } catch {
+            self.error = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+        }
     }
 
     private func save() async {
@@ -128,24 +140,31 @@ struct TunnelEditView: View {
 
         // Preserve the stable id on edit; mint a fresh one on add.
         let id: UUID
-        if case .edit(let tunnel) = mode, let existing = tunnel.profile {
-            id = existing.id
+        if case .edit(let tunnel) = mode {
+            id = tunnel.id
         } else {
             id = UUID()
         }
 
         do {
             #if os(iOS)
-            let profile = try form.makeProfile(id: id, includesDNS: true)
+            let submission = try form.makeSubmission(id: id, includesDNS: true)
             #else
-            let profile = try form.makeProfile(id: id, includesDNS: false)
+            let submission = try form.makeSubmission(id: id, includesDNS: false)
             #endif
 
             switch mode {
             case .add:
-                try await manager.add(profile)
+                try await manager.add(
+                    submission.profile,
+                    authToken: submission.authToken
+                )
             case .edit(let tunnel):
-                try await manager.modify(tunnel, to: profile)
+                try await manager.modify(
+                    tunnel,
+                    to: submission.profile,
+                    authToken: submission.authToken
+                )
             }
             dismiss()
         } catch {

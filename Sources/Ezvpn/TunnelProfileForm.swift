@@ -18,10 +18,10 @@ struct TunnelProfileForm: Equatable {
 
     init() {}
 
-    init(profile: TunnelProfile) {
+    init(profile: TunnelProfile, authToken: String) {
         name = profile.name
         serverNodeID = profile.serverNodeID
-        authToken = profile.authToken
+        self.authToken = authToken
         relayURLs = profile.relayURLs.joined(separator: ", ")
         routes = profile.routes.joined(separator: ", ")
         routes6 = profile.routes6.joined(separator: ", ")
@@ -35,11 +35,12 @@ struct TunnelProfileForm: Equatable {
             && !Self.trimmed(authToken).isEmpty
     }
 
-    /// Convert the editor fields into the persisted profile model.
+    /// Validate the editor fields and separate the non-secret profile from the
+    /// token that will be written directly to the Keychain.
     ///
     /// DNS fields are accepted only on iOS. macOS deliberately preserves the
     /// host's DNS configuration, so its caller passes `includesDNS: false`.
-    func makeProfile(id: UUID, includesDNS: Bool) throws -> TunnelProfile {
+    func makeSubmission(id: UUID, includesDNS: Bool) throws -> TunnelProfileSubmission {
         guard hasRequiredFields else {
             throw TunnelProfileFormError.missingRequiredFields
         }
@@ -56,16 +57,18 @@ struct TunnelProfileForm: Equatable {
             throw TunnelProfileFormError.invalidDNS(message)
         }
 
-        return TunnelProfile(
-            id: id,
-            name: Self.trimmed(name),
-            serverNodeID: Self.trimmed(serverNodeID),
-            authToken: Self.trimmed(authToken),
-            relayURLs: Self.splitCSV(relayURLs),
-            routes: Self.splitCSV(routes),
-            routes6: Self.splitCSV(routes6),
-            dnsServers: dnsServerList,
-            dnsMatchDomains: dnsMatchDomainList
+        return TunnelProfileSubmission(
+            profile: TunnelProfile(
+                id: id,
+                name: Self.trimmed(name),
+                serverNodeID: Self.trimmed(serverNodeID),
+                relayURLs: Self.splitCSV(relayURLs),
+                routes: Self.splitCSV(routes),
+                routes6: Self.splitCSV(routes6),
+                dnsServers: dnsServerList,
+                dnsMatchDomains: dnsMatchDomainList
+            ),
+            authToken: Self.trimmed(authToken)
         )
     }
 
@@ -78,6 +81,13 @@ struct TunnelProfileForm: Equatable {
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
+}
+
+/// The editor's validated output keeps the secret separate from the profile
+/// model that is serialized into Network Extension preferences.
+struct TunnelProfileSubmission: Equatable {
+    let profile: TunnelProfile
+    let authToken: String
 }
 
 enum TunnelProfileFormError: LocalizedError, Equatable {

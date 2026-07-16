@@ -18,7 +18,6 @@ set -euo pipefail
 APP_NAME="ezvpn"
 PROJECT_NAME="Ezvpn"
 SCHEME="Ezvpn"
-BUNDLE_ID="com.andrewtheguy.ezvpn"
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
@@ -167,6 +166,11 @@ printf '  device:        %s\n' "$DEVICE_ID"
     DEVELOPMENT_TEAM="$TEAM_ID" )
 
 [[ -d "$APP_PATH" ]] || die "build did not produce an app at $APP_PATH"
+
+# Read the bundle id from the app that was just built so launch tracks whatever
+# $(BUNDLE_ID_PREFIX) the project was generated/signed with (no hardcoded id).
+BUNDLE_ID="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Info.plist")"
+[[ -n "$BUNDLE_ID" ]] || die "could not read CFBundleIdentifier from $APP_PATH/Info.plist"
 
 echo "Installing on $DEVICE_ID ..."
 xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH"

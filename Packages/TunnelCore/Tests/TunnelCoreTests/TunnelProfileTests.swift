@@ -13,7 +13,7 @@ final class TunnelProfileTests: XCTestCase {
     ) -> TunnelProfile {
         TunnelProfile(
             id: id, name: name,
-            serverNodeID: "node-abc", authToken: "tok",
+            serverNodeID: "node-abc",
             relayURLs: relayURLs, routes: routes, routes6: routes6,
             dnsServers: dnsServers, dnsMatchDomains: dnsMatchDomains
         )
@@ -23,7 +23,6 @@ final class TunnelProfileTests: XCTestCase {
         let conf = sample().providerConfiguration()
         // These keys are what PacketTunnelProvider.startTunnel reads.
         XCTAssertEqual(conf["server_node_id"] as? String, "node-abc")
-        XCTAssertEqual(conf["auth_token"] as? String, "tok")
         XCTAssertEqual(conf["relay_urls"] as? [String], ["https://relay.example"])
         XCTAssertEqual(conf["routes"] as? [String], ["10.0.0.0/8"])
         XCTAssertEqual(conf["routes6"] as? [String], ["fd00::/64"])
@@ -75,7 +74,6 @@ final class TunnelProfileTests: XCTestCase {
         let conf: [String: Any] = ["profile_id": UUID().uuidString]
         let decoded = TunnelProfile.from(providerConfiguration: conf, name: "Bare")
         XCTAssertEqual(decoded?.serverNodeID, "")
-        XCTAssertEqual(decoded?.authToken, "")
         XCTAssertEqual(decoded?.relayURLs, [])
         XCTAssertEqual(decoded?.routes, [])
         XCTAssertEqual(decoded?.routes6, [])

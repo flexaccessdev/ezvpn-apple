@@ -16,7 +16,6 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
     /// Display name; also the manager's `localizedDescription`. Unique per app.
     public var name: String
     public var serverNodeID: String
-    public var authToken: String
     public var relayURLs: [String]
     /// IPv4 private CIDRs to route through the tunnel (split tunnel).
     public var routes: [String]
@@ -33,7 +32,6 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
         id: UUID = UUID(),
         name: String,
         serverNodeID: String,
-        authToken: String,
         relayURLs: [String],
         routes: [String],
         routes6: [String],
@@ -43,7 +41,6 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
         self.id = id
         self.name = name
         self.serverNodeID = serverNodeID
-        self.authToken = authToken
         self.relayURLs = relayURLs
         self.routes = routes
         self.routes6 = routes6
@@ -53,7 +50,7 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
 }
 
 /// Keys used in the `NETunnelProviderProtocol.providerConfiguration` plist
-/// dictionary. `serverNodeID`/`authToken`/`relayURLs`/`routes`/`routes6`/
+/// dictionary. `serverNodeID`/`relayURLs`/`routes`/`routes6`/
 /// `dnsServers`/`dnsMatchDomains` are the keys the PacketTunnel extension
 /// reads — do not rename them without updating
 /// `PacketTunnelProvider.startTunnel`. `profileID`/`name` are additive and
@@ -62,7 +59,6 @@ public enum ProviderConfigKey {
     public static let profileID = "profile_id"
     public static let name = "name"
     public static let serverNodeID = "server_node_id"
-    public static let authToken = "auth_token"
     public static let relayURLs = "relay_urls"
     public static let routes = "routes"
     public static let routes6 = "routes6"
@@ -79,7 +75,6 @@ public extension TunnelProfile {
             ProviderConfigKey.profileID: id.uuidString,
             ProviderConfigKey.name: name,
             ProviderConfigKey.serverNodeID: serverNodeID,
-            ProviderConfigKey.authToken: authToken,
             ProviderConfigKey.relayURLs: relayURLs,
             ProviderConfigKey.routes: routes,
             ProviderConfigKey.routes6: routes6,
@@ -101,7 +96,6 @@ public extension TunnelProfile {
             id: id,
             name: name,
             serverNodeID: conf[ProviderConfigKey.serverNodeID] as? String ?? "",
-            authToken: conf[ProviderConfigKey.authToken] as? String ?? "",
             relayURLs: conf[ProviderConfigKey.relayURLs] as? [String] ?? [],
             routes: conf[ProviderConfigKey.routes] as? [String] ?? [],
             routes6: conf[ProviderConfigKey.routes6] as? [String] ?? [],

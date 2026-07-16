@@ -10,14 +10,14 @@ import TunnelCore
 /// configure the tunnel interface from the server's handshake, hand the `utun`
 /// fd to Rust, and let Rust run the iroh/QUIC datagram loop.
 class PacketTunnelProvider: NEPacketTunnelProvider {
-    private let log = OSLog(subsystem: "com.andrewtheguy.ezvpn.PacketTunnel", category: "tunnel")
+    private let log = OSLog(subsystem: "ezvpn.PacketTunnel", category: "tunnel")
     private var handle: OpaquePointer?
 
     /// Serializes backend teardown and runtime-config queries, mirroring
     /// WireGuardAdapter's private work queue: `stopTunnel` completes only
     /// after `ezvpn_stop` has actually returned, and never blocks the
     /// provider's calling queue while the Rust side shuts down.
-    private let workQueue = DispatchQueue(label: "com.andrewtheguy.ezvpn.PacketTunnel.workQueue")
+    private let workQueue = DispatchQueue(label: "ezvpn.PacketTunnel.workQueue")
 
     /// What was actually applied to the interface (assigned addresses, tunnel
     /// routes, bypass routes, MTU), kept so the app can query it over
@@ -56,7 +56,17 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
 
         let serverNodeID = conf["server_node_id"] as? String ?? ""
-        let authToken = conf["auth_token"] as? String
+        guard let passwordReference = proto.passwordReference else {
+            completionHandler(Self.error("missing auth-token Keychain reference"))
+            return
+        }
+        let authToken: String
+        do {
+            authToken = try AuthTokenKeychain.token(for: passwordReference)
+        } catch {
+            completionHandler(Self.error("failed to load auth token: \(error.localizedDescription)"))
+            return
+        }
         let relayURLs = conf["relay_urls"] as? [String] ?? []
         let routes = conf["routes"] as? [String] ?? []
         let routes6 = conf["routes6"] as? [String] ?? []
@@ -83,7 +93,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // compute which server underlay addresses overlap and must be excluded.
         let configDict: [String: Any] = [
             "server_node_id": serverNodeID,
-            "auth_token": (authToken?.isEmpty == false) ? authToken! : NSNull(),
+            "auth_token": authToken,
             "relay_urls": relayURLs,
             "relay_only": false,
             "routes": routes,
@@ -439,7 +449,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     // MARK: - Helpers
 
     private static func error(_ message: String) -> NSError {
-        NSError(domain: "com.andrewtheguy.ezvpn", code: 1,
+        NSError(domain: "ezvpn", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: message])
     }
 
