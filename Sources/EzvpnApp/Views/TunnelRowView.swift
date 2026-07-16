@@ -21,8 +21,15 @@ struct TunnelRowView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
+                    Spacer(minLength: 8)
+                    #if os(macOS)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                    #endif
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Toggle("", isOn: connectBinding)
                 .labelsHidden()
                 .toggleStyle(.switch)

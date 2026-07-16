@@ -52,6 +52,9 @@ struct ConnPathSheet: View {
         }
         #if os(iOS)
         .presentationDetents([.medium, .large])
+        #elseif os(macOS)
+        .presentationSizing(.fitted)
+        .frame(minWidth: 440, minHeight: 320)
         #endif
     }
 }
