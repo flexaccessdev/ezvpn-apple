@@ -11,7 +11,7 @@
 #   scripts/bump-xcframework.sh            # defaults to the latest release tag
 set -euo pipefail
 
-REPO="andrewtheguy/ezvpn"
+REPO="flexaccessdev/ezvpn"
 ASSET="libezvpn-apple.xcframework.zip"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST="$SCRIPT_DIR/../Packages/Ezvpn/Package.swift"
