@@ -16,7 +16,10 @@ Network Extension owns the `utun` interface, routing, and IP/MTU config.
   profile is its own `NETunnelProviderManager` (name shown in Settings > VPN).
   Add/edit/rename/delete profiles; connect one at a time (activating a second
   automatically tears down the first). All profiles share the one PacketTunnel
-  extension — each carries its own config in `providerConfiguration`.
+  extension. Non-secret settings live in `providerConfiguration`; the auth
+  token is a device-only data-protection Keychain item shared with the extension
+  through a keychain access group, and the VPN protocol stores only its
+  persistent reference.
 - ✅ IPv4/IPv6 split tunnel. The server gateway/interface routes are always
   routed automatically; extra IPv4 and IPv6 CIDRs are optional.
 - ✅ Optional tunnel DNS on iOS, including match domains for conditional
@@ -59,6 +62,7 @@ Network Extension owns the `utun` interface, routing, and IP/MTU config.
   capability is not available on free personal teams. Both the app and the
   extension App IDs need the *Network Extensions* capability enabled (Xcode's
   automatic signing will offer to add it, or enable it in the Developer portal).
+  Their provisioning profiles must also allow the shared Keychain access group.
   The development Mac must also be registered to the team before Xcode can mint
   its Mac App Development profiles.
 - Xcode (tested with 26.2) on Apple Silicon.

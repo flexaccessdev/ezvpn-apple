@@ -49,8 +49,8 @@ final class TunnelContainer: ObservableObject, Identifiable {
     /// True between `startActivation` and the resulting connected/disconnected.
     var isAttemptingActivation = false
 
-    /// The decoded profile (connection params + name), or nil if the manager's
-    /// providerConfiguration is malformed.
+    /// The decoded non-secret profile (connection params + name), or nil if the
+    /// manager's providerConfiguration is malformed.
     var profile: TunnelProfile? {
         guard
             let proto = manager.protocolConfiguration as? NETunnelProviderProtocol,
@@ -59,18 +59,33 @@ final class TunnelContainer: ObservableObject, Identifiable {
         return TunnelProfile.from(providerConfiguration: conf, name: name)
     }
 
+    /// Load the profile's token through the Keychain persistent reference only
+    /// when the editor or a rollback operation needs it.
+    func authToken() throws -> String {
+        guard
+            let proto = manager.protocolConfiguration as? NETunnelProviderProtocol,
+            let reference = proto.passwordReference
+        else {
+            throw AuthTokenKeychainError.missingPersistentReference
+        }
+        return try AuthTokenKeychain.token(for: reference)
+    }
+
     /// The profile's stable UUID, read from the manager's providerConfiguration.
+    /// A Keychain credential reference is part of the required format.
     static func profileID(of manager: NETunnelProviderManager) -> UUID? {
         guard
             let proto = manager.protocolConfiguration as? NETunnelProviderProtocol,
+            let reference = proto.passwordReference,
+            !reference.isEmpty,
             let conf = proto.providerConfiguration,
             let idString = conf[ProviderConfigKey.profileID] as? String
         else { return nil }
         return UUID(uuidString: idString)
     }
 
-    /// Fails when the manager carries no stable `profile_id` (e.g. a config from
-    /// a pre-multi-profile build); such managers have no usable identity.
+    /// Fails when the manager carries no stable `profile_id` or has no Keychain
+    /// credential reference.
     init?(manager: NETunnelProviderManager) {
         guard let id = TunnelContainer.profileID(of: manager) else { return nil }
         self.id = id

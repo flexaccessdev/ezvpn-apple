@@ -77,19 +77,19 @@ targets:
     supportedDestinations: [iOS, macOS]
     sources:
       - Sources/Ezvpn
+      - Sources/Shared
     settings:
       base:
         PRODUCT_NAME: ezvpn
         PRODUCT_BUNDLE_IDENTIFIER: com.andrewtheguy.ezvpn
+        KEYCHAIN_ACCESS_GROUP: "$(AppIdentifierPrefix)com.andrewtheguy.ezvpn.shared"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Sources/Ezvpn/Ezvpn.entitlements
         "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Sources/Ezvpn/Ezvpn.macOS.entitlements
         "ARCHS[sdk=macosx*]": arm64
         "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "@executable_path/../Frameworks"
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UIRequiresFullScreen: YES
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: Sources/Ezvpn/Info.plist
         MARKETING_VERSION: "0.0.20"
         CURRENT_PROJECT_VERSION: "1"
     dependencies:
@@ -127,9 +127,11 @@ targets:
     supportedDestinations: [iOS, macOS]
     sources:
       - Sources/PacketTunnel
+      - Sources/Shared
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.andrewtheguy.ezvpn.PacketTunnel
+        KEYCHAIN_ACCESS_GROUP: "$(AppIdentifierPrefix)com.andrewtheguy.ezvpn.shared"
         CODE_SIGN_ENTITLEMENTS: Sources/PacketTunnel/PacketTunnel.entitlements
         "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Sources/PacketTunnel/PacketTunnel.macOS.entitlements
         "ARCHS[sdk=macosx*]": arm64

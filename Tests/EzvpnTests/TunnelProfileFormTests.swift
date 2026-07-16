@@ -16,7 +16,7 @@ final class TunnelProfileFormTests: XCTestCase {
         XCTAssertFalse(form.hasRequiredFields)
     }
 
-    func testMakeProfileTrimsScalarsAndSplitsLists() throws {
+    func testMakeSubmissionTrimsScalarsAndSplitsLists() throws {
         let id = UUID(uuidString: "11111111-2222-3333-4444-555555555555")!
         var form = TunnelProfileForm()
         form.name = "  Office \n"
@@ -26,12 +26,13 @@ final class TunnelProfileFormTests: XCTestCase {
         form.routes = " 10.0.0.0/8,192.168.0.0/16 "
         form.routes6 = " fd00::/8, "
 
-        let profile = try form.makeProfile(id: id, includesDNS: false)
+        let submission = try form.makeSubmission(id: id, includesDNS: false)
+        let profile = submission.profile
 
         XCTAssertEqual(profile.id, id)
         XCTAssertEqual(profile.name, "Office")
         XCTAssertEqual(profile.serverNodeID, "node-id")
-        XCTAssertEqual(profile.authToken, "token")
+        XCTAssertEqual(submission.authToken, "token")
         XCTAssertEqual(profile.relayURLs, ["https://relay.one", "https://relay.two"])
         XCTAssertEqual(profile.routes, ["10.0.0.0/8", "192.168.0.0/16"])
         XCTAssertEqual(profile.routes6, ["fd00::/8"])
@@ -39,22 +40,22 @@ final class TunnelProfileFormTests: XCTestCase {
         XCTAssertEqual(profile.dnsMatchDomains, [])
     }
 
-    func testMakeProfileNormalizesAndValidatesDNS() throws {
+    func testMakeSubmissionNormalizesAndValidatesDNS() throws {
         var form = requiredForm()
         form.dnsServers = " 10.0.0.53, fd00::53 "
         form.dnsMatchDomains = " .Corp.Example. , DEV.EXAMPLE "
 
-        let profile = try form.makeProfile(id: UUID(), includesDNS: true)
+        let profile = try form.makeSubmission(id: UUID(), includesDNS: true).profile
 
         XCTAssertEqual(profile.dnsServers, ["10.0.0.53", "fd00::53"])
         XCTAssertEqual(profile.dnsMatchDomains, ["corp.example", "dev.example"])
     }
 
-    func testMakeProfileRejectsInvalidDNS() {
+    func testMakeSubmissionRejectsInvalidDNS() {
         var form = requiredForm()
         form.dnsServers = "resolver.example"
 
-        XCTAssertThrowsError(try form.makeProfile(id: UUID(), includesDNS: true)) { error in
+        XCTAssertThrowsError(try form.makeSubmission(id: UUID(), includesDNS: true)) { error in
             XCTAssertEqual(
                 error as? TunnelProfileFormError,
                 .invalidDNS("DNS server is not an IP address: resolver.example")
@@ -66,11 +67,11 @@ final class TunnelProfileFormTests: XCTestCase {
         }
     }
 
-    func testMakeProfileRejectsMissingRequiredFields() {
+    func testMakeSubmissionRejectsMissingRequiredFields() {
         var form = requiredForm()
         form.authToken = "   "
 
-        XCTAssertThrowsError(try form.makeProfile(id: UUID(), includesDNS: true)) { error in
+        XCTAssertThrowsError(try form.makeSubmission(id: UUID(), includesDNS: true)) { error in
             XCTAssertEqual(error as? TunnelProfileFormError, .missingRequiredFields)
         }
     }
@@ -80,7 +81,7 @@ final class TunnelProfileFormTests: XCTestCase {
         form.dnsServers = "not-an-ip"
         form.dnsMatchDomains = "invalid/domain"
 
-        let profile = try form.makeProfile(id: UUID(), includesDNS: false)
+        let profile = try form.makeSubmission(id: UUID(), includesDNS: false).profile
 
         XCTAssertTrue(profile.dnsServers.isEmpty)
         XCTAssertTrue(profile.dnsMatchDomains.isEmpty)
@@ -90,7 +91,6 @@ final class TunnelProfileFormTests: XCTestCase {
         let profile = TunnelProfile(
             name: "Home",
             serverNodeID: "node",
-            authToken: "secret",
             relayURLs: ["relay-1", "relay-2"],
             routes: ["10.0.0.0/8"],
             routes6: ["fd00::/8"],
@@ -98,7 +98,7 @@ final class TunnelProfileFormTests: XCTestCase {
             dnsMatchDomains: ["corp.example"]
         )
 
-        let form = TunnelProfileForm(profile: profile)
+        let form = TunnelProfileForm(profile: profile, authToken: "secret")
 
         XCTAssertEqual(form.name, "Home")
         XCTAssertEqual(form.serverNodeID, "node")

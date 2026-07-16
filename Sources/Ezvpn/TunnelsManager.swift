@@ -62,8 +62,8 @@ final class TunnelsManager: ObservableObject {
 
     /// Re-read all VPN preferences, re-attaching reloaded managers to existing
     /// containers (so identity, observers, and in-flight activation state
-    /// survive) and dropping any removed outside the app. Managers with no
-    /// stable `profile_id` (e.g. from a pre-multi-profile build) are ignored.
+    /// survive) and dropping any removed outside the app. Managers without the
+    /// current stable-id + Keychain-reference format are ignored.
     func reload() async {
         do {
             let managers = try await NETunnelProviderManager.loadAllFromPreferences()
@@ -92,21 +92,31 @@ final class TunnelsManager: ObservableObject {
     /// previously active one is restarted so adding a profile doesn't silently
     /// drop the user's connection.
     @discardableResult
-    func add(_ profile: TunnelProfile) async throws -> TunnelContainer {
+    func add(_ profile: TunnelProfile, authToken: String) async throws -> TunnelContainer {
         let name = try validatedName(profile.name, excluding: nil)
         var profile = profile
         profile.name = name
 
         let activeTunnel = tunnels.first { $0.status.isInOperation }
 
+        let passwordReference: Data
+        do {
+            passwordReference = try AuthTokenKeychain.store(
+                authToken, for: profile.id)
+        } catch {
+            throw TunnelsManagerError.system(error)
+        }
+
         let manager = NETunnelProviderManager()
-        manager.protocolConfiguration = makeProtocol(for: profile)
+        manager.protocolConfiguration = makeProtocol(
+            for: profile, passwordReference: passwordReference)
         manager.localizedDescription = name
         manager.isEnabled = true
         do {
             try await manager.saveToPreferences()
             try await manager.loadFromPreferences()
         } catch {
+            try? AuthTokenKeychain.delete(for: profile.id)
             throw TunnelsManagerError.system(error)
         }
 
@@ -126,18 +136,38 @@ final class TunnelsManager: ObservableObject {
 
     /// Rewrite an existing profile's configuration and/or name. If it is running
     /// and the config changed, restart it so the change takes effect.
-    func modify(_ tunnel: TunnelContainer, to profile: TunnelProfile) async throws {
+    func modify(
+        _ tunnel: TunnelContainer,
+        to profile: TunnelProfile,
+        authToken: String
+    ) async throws {
         let name = try validatedName(profile.name, excluding: tunnel)
         var profile = profile
         profile.name = name
 
-        tunnel.manager.protocolConfiguration = makeProtocol(for: profile)
+        let previousToken = try? tunnel.authToken()
+        let passwordReference: Data
+        do {
+            passwordReference = try AuthTokenKeychain.store(
+                authToken, for: profile.id)
+        } catch {
+            throw TunnelsManagerError.system(error)
+        }
+
+        tunnel.manager.protocolConfiguration = makeProtocol(
+            for: profile, passwordReference: passwordReference)
         tunnel.manager.localizedDescription = name
         tunnel.manager.isEnabled = true
         do {
             try await tunnel.manager.saveToPreferences()
             try await tunnel.manager.loadFromPreferences()
         } catch {
+            if let previousToken {
+                _ = try? AuthTokenKeychain.store(previousToken, for: profile.id)
+            } else {
+                try? AuthTokenKeychain.delete(for: profile.id)
+            }
+            try? await tunnel.manager.loadFromPreferences()
             throw TunnelsManagerError.system(error)
         }
         tunnel.setName(name)
@@ -159,6 +189,11 @@ final class TunnelsManager: ObservableObject {
         }
         tunnels.removeAll { $0.id == tunnel.id }
         refreshMenuBarIconState()
+        do {
+            try AuthTokenKeychain.delete(for: tunnel.id)
+        } catch {
+            throw TunnelsManagerError.system(error)
+        }
     }
 
     // MARK: - Activation
@@ -235,12 +270,16 @@ final class TunnelsManager: ObservableObject {
         }
     }
 
-    private func makeProtocol(for profile: TunnelProfile) -> NETunnelProviderProtocol {
+    private func makeProtocol(
+        for profile: TunnelProfile,
+        passwordReference: Data
+    ) -> NETunnelProviderProtocol {
         let proto = NETunnelProviderProtocol()
         proto.providerBundleIdentifier = providerBundleID
         // serverAddress is shown in Settings > VPN; node id is fine here.
         proto.serverAddress = profile.serverNodeID
         proto.providerConfiguration = profile.providerConfiguration()
+        proto.passwordReference = passwordReference
         return proto
     }
 
