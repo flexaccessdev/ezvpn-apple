@@ -5,8 +5,7 @@ import PackageDescription
 // parsing, prefix-overlap tests, netmask math, and the split-tunnel vs
 // local-network conflict check. No NetworkExtension or FFI dependency — only
 // Darwin — so the whole module builds and unit-tests natively on macOS
-// (`swift test` in this directory), which matters because the app itself is
-// device-only and can't host a simulator test bundle.
+// (`swift test` in this directory), outside the host app and extension targets.
 let package = Package(
     name: "TunnelCore",
     platforms: [.iOS(.v17), .macOS(.v13)],

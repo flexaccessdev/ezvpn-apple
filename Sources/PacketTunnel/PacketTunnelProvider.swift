@@ -6,7 +6,7 @@ import TunnelCore
 
 /// The Packet Tunnel Provider: the process the OS runs to carry VPN traffic.
 ///
-/// It bridges iOS's `NEPacketTunnelProvider` to the Rust core (libezvpn.a):
+/// It bridges Apple's `NEPacketTunnelProvider` to the Rust core (libezvpn.a):
 /// configure the tunnel interface from the server's handshake, hand the `utun`
 /// fd to Rust, and let Rust run the iroh/QUIC datagram loop.
 class PacketTunnelProvider: NEPacketTunnelProvider {
@@ -197,19 +197,19 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
         settings.mtu = NSNumber(value: mtu)
 
-        // Split DNS (conditional forwarding): names under the match domains
-        // resolve via the tunnel's DNS servers; every other name keeps the
-        // physical network's resolvers. This must live on the tunnel — iOS
-        // ignores installed DNS-settings profiles (com.apple.dnsSettings.managed)
-        // while any VPN is up, so a profile-based split DNS goes dark the
-        // moment this tunnel connects.
+        // Tunnel DNS is global on macOS. iOS additionally applies match domains
+        // here because it ignores installed DNS-settings profiles while a VPN
+        // is active, making the tunnel the only reliable conditional-forwarding
+        // path on that platform.
         if !dnsServers.isEmpty {
             let dns = NEDNSSettings(servers: dnsServers)
+            #if os(iOS)
             if !dnsMatchDomains.isEmpty {
                 dns.matchDomains = dnsMatchDomains
                 // Route-only: match domains must not double as search suffixes.
                 dns.matchDomainsNoSearch = true
             }
+            #endif
             settings.dnsSettings = dns
             // A server no tunnel route covers is answered (or not) by the
             // underlying network — usually a misconfiguration for a private
@@ -511,11 +511,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
     /// Locate the `utun` file descriptor the OS created for this tunnel.
     ///
-    /// NetworkExtension does not hand the fd to us directly. The iOS SDK omits
-    /// `<sys/kern_control.h>`, so we use the portable technique: probe each open
-    /// fd with the `UTUN_OPT_IFNAME` control-socket option and keep the one
-    /// whose interface name starts with `utun`. The constants are hardcoded
-    /// because their headers are unavailable on iOS:
+    /// NetworkExtension does not hand the fd to us directly. On iOS and macOS,
+    /// probe each open fd with the `UTUN_OPT_IFNAME` control-socket option and
+    /// keep the one whose interface name starts with `utun`. The constants are
+    /// hardcoded because the iOS SDK does not expose the required headers:
     ///   SYSPROTO_CONTROL = 2 (sys/sys_domain.h),
     ///   UTUN_OPT_IFNAME  = 2 (net/if_utun.h).
     private var tunnelFileDescriptor: Int32? {

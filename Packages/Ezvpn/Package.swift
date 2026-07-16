@@ -2,8 +2,8 @@
 import Foundation
 import PackageDescription
 
-// Delivers the iOS Rust artifact — libezvpn.xcframework (built by the sibling
-// repo's build-ios.sh, released as libezvpn-ios.xcframework.zip) — as a Swift
+// Delivers the Apple Rust artifact — libezvpn.xcframework (built by the sibling
+// repo's build-apple.sh, released as libezvpn-apple.xcframework.zip) — as a Swift
 // package binary target. The app (this repo) references this package by local
 // path, so it always uses this manifest; there is no vendored copy.
 //
@@ -14,7 +14,7 @@ import PackageDescription
 // instead of the release. SPM forbids binary-target paths outside the package
 // root, so the local build is reached through the committed relative symlink
 // local/libezvpn.xcframework points at sibling
-// ../ezvpn/dist/ios/libezvpn.xcframework. Set the var to "1" to use that
+// ../ezvpn/dist/apple/libezvpn.xcframework. Set the var to "1" to use that
 // symlink, or to another path relative to this package dir:
 //   EZVPN_LOCAL_XCFRAMEWORK=1 xcodegen generate && ... xcodebuild ...
 
@@ -27,8 +27,8 @@ func localBinaryTarget() -> Target? {
 
 let binaryTarget = localBinaryTarget() ?? .binaryTarget(
     name: "libezvpn",
-    url: "https://github.com/andrewtheguy/ezvpn/releases/download/v0.0.19/libezvpn-ios.xcframework.zip",
-    checksum: "6188a36916d2dd03f5a2fcee24671ceb9a589b09367e1d78adc6aabd37db8ed0"
+    url: "https://github.com/andrewtheguy/ezvpn/releases/download/v0.0.20/libezvpn-apple.xcframework.zip",
+    checksum: "497cc50c2640ca50d0df32e44997ff4cc8c7bf3feb251842a521d2c08fcc2214"
 )
 
 let package = Package(

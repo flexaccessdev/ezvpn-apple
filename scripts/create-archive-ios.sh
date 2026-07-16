@@ -153,8 +153,8 @@ printf '  archive:       %s\n' "$ARCHIVE_PATH"
 printf '  configuration: %s\n' "$CONFIGURATION"
 printf '  team:          %s\n' "$TEAM_ID"
 
-# generic/platform=iOS + -sdk iphoneos selects the device arm64 slice of the
-# libezvpn.xcframework (it is arm64-only — see CLAUDE.md).
+# generic/platform=iOS + -sdk iphoneos selects the ios-arm64 slice of the
+# two-platform libezvpn.xcframework (see CLAUDE.md).
 xcodebuild archive \
   -project "$PROJECT_ROOT/${PROJECT_NAME}.xcodeproj" \
   -scheme "$SCHEME" \

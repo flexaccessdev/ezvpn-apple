@@ -34,7 +34,7 @@ struct ConnPathSheet: View {
                 }
             }
             .navigationTitle("Connection path")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done") { dismiss() }
@@ -50,7 +50,9 @@ struct ConnPathSheet: View {
             }
             .task { paths = await query() }
         }
+        #if os(iOS)
         .presentationDetents([.medium, .large])
+        #endif
     }
 }
 

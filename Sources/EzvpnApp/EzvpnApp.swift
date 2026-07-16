@@ -9,5 +9,8 @@ struct EzvpnApp: App {
             TunnelListView()
                 .environmentObject(manager)
         }
+        #if os(macOS)
+        .defaultSize(width: 480, height: 600)
+        #endif
     }
 }

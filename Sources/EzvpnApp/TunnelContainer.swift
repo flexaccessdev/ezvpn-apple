@@ -4,8 +4,7 @@ import TunnelCore
 
 extension NEVPNStatus {
     /// The tunnel session is doing something — not fully down. Used to decide
-    /// whether a new activation must first wait for this one to deactivate
-    /// (iOS runs at most one tunnel at a time).
+    /// whether a new activation must first wait for this one to deactivate.
     var isInOperation: Bool {
         switch self {
         case .connecting, .connected, .reasserting, .disconnecting: return true

@@ -18,9 +18,33 @@ extension NEVPNStatus {
         switch self {
         case .connected: return .green
         case .connecting, .reasserting, .disconnecting: return .orange
-        case .invalid, .disconnected: return Color(.systemGray3)
-        @unknown default: return Color(.systemGray3)
+        case .invalid, .disconnected: return Color.gray.opacity(0.35)
+        @unknown default: return Color.gray.opacity(0.35)
         }
+    }
+}
+
+extension View {
+    /// Shared text-entry behavior with the UIKit-only capitalization modifier
+    /// applied only where it exists.
+    @ViewBuilder
+    func fieldStyle() -> some View {
+        #if os(iOS)
+        autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+        #else
+        autocorrectionDisabled()
+        #endif
+    }
+
+    /// Keep iOS sheet titles compact without using the unavailable macOS API.
+    @ViewBuilder
+    func inlineNavigationTitle() -> some View {
+        #if os(iOS)
+        navigationBarTitleDisplayMode(.inline)
+        #else
+        self
+        #endif
     }
 }
 

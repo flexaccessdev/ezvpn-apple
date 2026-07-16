@@ -21,7 +21,7 @@ enum TunnelsManagerError: LocalizedError {
 /// `NETunnelProviderManager` (all pointing at the same PacketTunnel extension).
 /// SwiftUI-flavored counterpart of the WireGuard app's `TunnelsManager`: it
 /// publishes an array of `TunnelContainer`, does the CRUD, serializes activation
-/// (iOS runs at most one tunnel at a time), and routes system status
+/// (the app runs at most one tunnel at a time), and routes system status
 /// notifications to the right container.
 @MainActor
 final class TunnelsManager: ObservableObject {
@@ -159,7 +159,7 @@ final class TunnelsManager: ObservableObject {
     // MARK: - Activation
 
     /// Start `tunnel`, first tearing down any other active tunnel and waiting
-    /// for it to fully stop (iOS permits only one active tunnel at a time).
+    /// for it to fully stop.
     func startActivation(of tunnel: TunnelContainer) async {
         guard tunnels.contains(where: { $0.id == tunnel.id }) else { return }
         guard !tunnel.status.isInOperation, !tunnel.isWaiting else { return }

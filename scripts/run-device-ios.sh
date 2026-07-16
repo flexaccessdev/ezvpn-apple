@@ -10,7 +10,7 @@ set -euo pipefail
 #
 # By default this links a LOCALLY built libezvpn.xcframework
 # (EZVPN_LOCAL_XCFRAMEWORK=1) so you test the Rust FFI in ../ezvpn as it stands
-# on disk — build it first with `(cd ../ezvpn && ./build-ios.sh release)`. Pass
+# on disk — build it first with `(cd ../ezvpn && ./build-apple.sh release)`. Pass
 # --pinned to link the released xcframework from Package.swift instead. The
 # choice is baked in at `xcodegen generate` time, so the project is always
 # regenerated (skip with --no-generate if you know it already matches).
@@ -36,7 +36,7 @@ Options:
                               Defaults to DEVELOPMENT_TEAM from Developer.local.xcconfig.
   -c, --configuration NAME    Build configuration. Defaults to Debug.
       --pinned                Link the released xcframework (Package.swift default)
-                              instead of a local ../ezvpn/dist/ios build.
+                              instead of a local ../ezvpn/dist/apple build.
       --no-generate           Skip 'xcodegen generate' (use the project as-is).
       --no-launch             Install but do not launch.
       --allow-provisioning-updates
@@ -126,7 +126,7 @@ fi
 export_local_env() {
   if [[ "$USE_LOCAL_XCFRAMEWORK" == "1" ]]; then
     local link="$PROJECT_ROOT/Packages/Ezvpn/local/libezvpn.xcframework"
-    [[ -e "$link" ]] || die "local xcframework not found at $link — build it with '(cd ../ezvpn && ./build-ios.sh release)'"
+    [[ -e "$link" ]] || die "local xcframework not found at $link — build it with '(cd ../ezvpn && ./build-apple.sh release)'"
     export EZVPN_LOCAL_XCFRAMEWORK=1
   else
     unset EZVPN_LOCAL_XCFRAMEWORK || true

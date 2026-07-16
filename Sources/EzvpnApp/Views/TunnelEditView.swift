@@ -43,29 +43,29 @@ struct TunnelEditView: View {
             Section("Profile") {
                 LabeledField("Name") {
                     TextField("", text: $name)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .fieldStyle()
                 }
             }
 
             Section("Server") {
                 LabeledField("Server node id") {
                     TextField("", text: $serverNodeID)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .fieldStyle()
                 }
                 LabeledField("Auth token") {
                     SecureField("", text: $authToken)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .fieldStyle()
                 }
                 LabeledField("Relay URLs", hint: "comma-separated, optional") {
                     TextField("", text: $relayURLs)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .fieldStyle()
                 }
             }
 
             Section {
                 LabeledField("IPv4 routes", hint: "comma-separated, optional") {
                     TextField("", text: $routes)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .fieldStyle()
                 }
             } header: {
                 Text("Split tunnel (IPv4 private CIDRs)")
@@ -76,23 +76,33 @@ struct TunnelEditView: View {
             Section("Split tunnel (IPv6 CIDRs)") {
                 LabeledField("IPv6 routes", hint: "comma-separated, optional") {
                     TextField("", text: $routes6)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .fieldStyle()
                 }
             }
 
             Section {
                 LabeledField("DNS servers", hint: "comma-separated IPs, optional") {
                     TextField("", text: $dnsServers)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .fieldStyle()
                 }
+                #if os(iOS)
                 LabeledField("Match domains", hint: "comma-separated, optional") {
                     TextField("", text: $dnsMatchDomains)
-                        .autocorrectionDisabled().textInputAutocapitalization(.never)
+                        .fieldStyle()
                 }
+                #endif
             } header: {
+                #if os(iOS)
                 Text("Split DNS (conditional forwarding)")
+                #else
+                Text("DNS")
+                #endif
             } footer: {
+                #if os(iOS)
                 Text("Names under the match domains resolve via these DNS servers through the tunnel; everything else keeps the network's normal DNS. Needed because iOS ignores installed DNS profiles while a VPN is connected. Servers should sit inside a tunnel route. Empty match domains send all DNS through the servers.")
+                #else
+                Text("All DNS resolves via these servers through the tunnel. Servers should sit inside a tunnel route.")
+                #endif
             }
 
             if let error {
@@ -102,8 +112,14 @@ struct TunnelEditView: View {
             }
         }
         .navigationTitle(isAdd ? "New Profile" : "Edit Profile")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationTitle()
+        #if os(iOS)
         .scrollDismissesKeyboard(.interactively)
+        #endif
+        #if os(macOS)
+        .formStyle(.grouped)
+        .frame(minWidth: 440, minHeight: 520)
+        #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { dismiss() }
@@ -136,7 +152,11 @@ struct TunnelEditView: View {
         defer { saving = false }
 
         let dnsServerList = splitCSV(dnsServers)
+        #if os(iOS)
         let dnsMatchDomainList = splitCSV(dnsMatchDomains).map(normalizedDNSMatchDomain)
+        #else
+        let dnsMatchDomainList: [String] = []
+        #endif
         if let dnsError = splitDNSValidationError(
             servers: dnsServerList, matchDomains: dnsMatchDomainList
         ) {

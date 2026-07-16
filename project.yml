@@ -1,8 +1,9 @@
-# XcodeGen spec for the ezvpn iOS POC.
+# XcodeGen spec for the native iOS + macOS ezvpn app.
 #
 # Generate the Xcode project with:   xcodegen generate
 # Then open Ezvpn.xcodeproj, select your signing Team on BOTH targets, and run
-# on a *real device* (a Packet Tunnel Provider cannot run in the Simulator).
+# on a Mac or a real iOS device (a Packet Tunnel Provider cannot run in the
+# iOS Simulator).
 #
 # The Rust static library + header come from the local Swift package in
 # Packages/Ezvpn — a binary target that downloads the pinned release zip
@@ -14,6 +15,7 @@ options:
   bundleIdPrefix: com.example.ezvpn
   deploymentTarget:
     iOS: "17.0"
+    macOS: "15.0"
   createIntermediateGroups: true
 
 packages:
@@ -23,8 +25,8 @@ packages:
   Ezvpn:
     path: Packages/Ezvpn
   # Pure IP/CIDR primitives (overlap checks, netmask math) shared with the
-  # extension. Unit-tested natively on macOS: `swift test` in the package dir —
-  # the app targets are device-only, so tests can't live in them.
+  # extension. Unit-tested natively on macOS: `swift test` in the package dir,
+  # outside the app and extension targets.
   TunnelCore:
     path: Packages/TunnelCore
 
@@ -63,7 +65,7 @@ schemes:
 targets:
   EzvpnApp:
     type: application
-    platform: iOS
+    supportedDestinations: [iOS, macOS]
     sources:
       - Sources/EzvpnApp
     settings:
@@ -71,6 +73,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.ezvpn
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Sources/EzvpnApp/EzvpnApp.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Sources/EzvpnApp/EzvpnApp.macOS.entitlements
+        "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "@executable_path/../Frameworks"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UIRequiresFullScreen: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
@@ -88,13 +92,14 @@ targets:
 
   PacketTunnel:
     type: app-extension
-    platform: iOS
+    supportedDestinations: [iOS, macOS]
     sources:
       - Sources/PacketTunnel
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.example.ezvpn.PacketTunnel
         CODE_SIGN_ENTITLEMENTS: Sources/PacketTunnel/PacketTunnel.entitlements
+        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Sources/PacketTunnel/PacketTunnel.macOS.entitlements
         INFOPLIST_FILE: Sources/PacketTunnel/Info.plist
         SWIFT_OBJC_BRIDGING_HEADER: Sources/PacketTunnel/Bridging-Header.h
         # No LIBRARY_SEARCH_PATHS/HEADER_SEARCH_PATHS/-lezvpn needed: SPM links

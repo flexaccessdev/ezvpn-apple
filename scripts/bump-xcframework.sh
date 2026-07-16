@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Point Packages/Ezvpn/Package.swift's binary target at an ezvpn release.
-# Downloads the release's libezvpn-ios.xcframework.zip, computes its SPM
+# Downloads the release's libezvpn-apple.xcframework.zip, computes its SPM
 # checksum (the plain sha256 of the zip), and rewrites the url + checksum lines.
 #
 # Usage:
@@ -10,7 +10,7 @@
 set -euo pipefail
 
 REPO="andrewtheguy/ezvpn"
-ASSET="libezvpn-ios.xcframework.zip"
+ASSET="libezvpn-apple.xcframework.zip"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MANIFEST="$SCRIPT_DIR/../Packages/Ezvpn/Package.swift"
 
@@ -31,7 +31,7 @@ CHECKSUM="$(shasum -a 256 "$TMP/$ASSET" | cut -d' ' -f1)"
 
 # BSD sed (macOS) needs the empty -i arg; portable form via a temp file.
 sed -E \
-  -e "s#releases/download/[^/]+/${ASSET}#releases/download/${TAG}/${ASSET}#" \
+  -e "s#url: \"https://github.com/${REPO}/releases/download/[^\"]+\"#url: \"${URL}\"#" \
   -e "s/checksum: \"[a-f0-9]+\"/checksum: \"${CHECKSUM}\"/" \
   "$MANIFEST" > "$TMP/Package.swift"
 mv "$TMP/Package.swift" "$MANIFEST"

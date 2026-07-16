@@ -25,6 +25,7 @@ struct TunnelRowView: View {
             }
             Toggle("", isOn: connectBinding)
                 .labelsHidden()
+                .toggleStyle(.switch)
                 .disabled(tunnel.status == .disconnecting)
         }
     }
