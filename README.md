@@ -147,9 +147,12 @@ versions to the release version).
    The bundle-id prefix committed in `Developer.xcconfig` is the placeholder
    `com.example.ezvpn`, which signs under no team (it only builds unsigned). To
    sign, set `BUNDLE_ID_PREFIX` in the same `Developer.local.xcconfig` to a
-   prefix your team owns — nothing else to edit: the app id, `.PacketTunnel`
-   extension id, keychain access group, and the extension id the app targets
+   prefix your team owns — nothing else to edit: the app id, the `.PacketTunnel`
+   extension id, and the extension id the app targets
    (`TunnelsManager.providerBundleID`, derived from `Bundle.main`) all follow it.
+   (The keychain access group is `$(AppIdentifierPrefix)ezvpn.shared` — team-
+   prefixed but otherwise a neutral constant, so it does not depend on the
+   prefix.)
 
 3. **Run the app.** For macOS, build and open the native app with:
 
