@@ -1,22 +1,58 @@
-name: Build unsigned Apple apps
+name: Release iOS (Manual)
 
 on:
   workflow_dispatch:
-  workflow_call:
 
 permissions:
-  contents: read
-
-concurrency:
-  group: unsigned-build-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  contents: write
 
 jobs:
-  build:
-    name: Build iOS and macOS
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.tag.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Generate tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          timestamp="$(date -u +'%Y%m%d%H%M%S')"
+          short_sha="$(git rev-parse --short=7 "$GITHUB_SHA")"
+          echo "release_tag=${timestamp}-${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Abort if tag already exists
+        run: |
+          if git ls-remote --tags origin "refs/tags/${{ steps.tag.outputs.release_tag }}" | grep -q .; then
+            echo "::error::Tag ${{ steps.tag.outputs.release_tag }} already exists on remote"
+            exit 1
+          fi
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "${{ steps.tag.outputs.release_tag }}" --json isDraft --jq '.isDraft' 2>/dev/null | grep -qx true; then
+            echo "Deleting stale draft release ${{ steps.tag.outputs.release_tag }}"
+            gh release delete "${{ steps.tag.outputs.release_tag }}" --yes
+          fi
+
+          gh release create "${{ steps.tag.outputs.release_tag }}" \
+            --draft \
+            --prerelease \
+            --target "${{ github.sha }}" \
+            --title "Prerelease iOS ${{ steps.tag.outputs.release_tag }}" \
+            --generate-notes
+
+  build-ios:
+    needs: setup
+    name: Build unsigned iOS app
     runs-on: macos-latest
     timeout-minutes: 60
-
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -75,38 +111,17 @@ jobs:
             DEVELOPMENT_TEAM="" \
             COMPILER_INDEX_STORE_ENABLE=NO
 
-      - name: Build unsigned macOS app
-        run: |
-          xcodebuild build \
-            -project Ezvpn.xcodeproj \
-            -scheme Ezvpn \
-            -configuration Release \
-            -destination 'platform=macOS,arch=arm64' \
-            -sdk macosx \
-            -derivedDataPath "$RUNNER_TEMP/DerivedData-macOS" \
-            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            DEVELOPMENT_TEAM="" \
-            COMPILER_INDEX_STORE_ENABLE=NO
-
-      - name: Package app bundles
+      - name: Package app bundle
         run: |
           set -euo pipefail
 
           ios_app="$RUNNER_TEMP/DerivedData-iOS/Build/Products/Release-iphoneos/ezvpn.app"
-          macos_app="$RUNNER_TEMP/DerivedData-macOS/Build/Products/Release/ezvpn.app"
-
           test -d "$ios_app"
-          test -d "$macos_app"
 
           mkdir -p artifacts
           tar -C "$(dirname "$ios_app")" \
             -czf artifacts/ezvpn-ios-unsigned.tar.gz \
             "$(basename "$ios_app")"
-          tar -C "$(dirname "$macos_app")" \
-            -czf artifacts/ezvpn-macos-unsigned.tar.gz \
-            "$(basename "$macos_app")"
 
       - name: Upload unsigned iOS app
         uses: actions/upload-artifact@v7
@@ -115,9 +130,29 @@ jobs:
           path: artifacts/ezvpn-ios-unsigned.tar.gz
           if-no-files-found: error
 
-      - name: Upload unsigned macOS app
-        uses: actions/upload-artifact@v7
+  publish-release:
+    needs: [setup, build-ios]
+    if: always() && needs.setup.result == 'success' && needs.build-ios.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
         with:
-          name: release-macos-arm64
-          path: artifacts/ezvpn-macos-unsigned.tar.gz
-          if-no-files-found: error
+          pattern: release-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: List release artifacts
+        run: ls -la artifacts/
+
+      - name: Upload artifacts to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "${{ needs.setup.outputs.release_tag }}" artifacts/* --clobber
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "${{ needs.setup.outputs.release_tag }}" --draft=false

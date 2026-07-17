@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build and launch the native macOS app and Packet Tunnel app extension.
+# Build and launch the native macOS app and its packet-tunnel system extension.
 # Local Rust XCFramework is the default; pass --pinned for the release artifact.
+#
+# The macOS tunnel is a system extension (not an app extension). A
+# development-signed system extension only activates when either the app runs
+# from /Applications (use --install) or developer mode is enabled with
+#   systemextensionsctl developer on
+# For anyone-can-run distribution, use scripts/create-archive-macos.sh instead
+# (Developer ID + notarization).
 
 PROJECT_NAME="Ezvpn"
 SCHEME="Ezvpn"
@@ -122,6 +129,8 @@ echo "Opening $APP_PATH ..."
 /usr/bin/open "$APP_PATH"
 
 echo
-echo "If the Packet Tunnel extension does not appear, inspect registered providers with:"
-echo "  pluginkit -m -p com.apple.networkextension.packet-tunnel"
-echo "If DerivedData registration fails, retry with scripts/run-macos.sh --install."
+echo "The app requests activation of the packet-tunnel system extension on launch;"
+echo "approve it in System Settings when prompted. Inspect registered extensions with:"
+echo "  systemextensionsctl list"
+echo "If activation is refused from DerivedData, enable developer mode with"
+echo "'systemextensionsctl developer on', or re-run with scripts/run-macos.sh --install."

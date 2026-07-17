@@ -6,15 +6,15 @@
 	<array>
 		<string>$(KEYCHAIN_ACCESS_GROUP)</string>
 	</array>
-	<!-- Release/Developer ID: distribution profiles grant the "-systemextension"
-	     variant (a macOS system extension, not an app extension). Debug uses the
-	     base value — see Ezvpn.macOS.debug.entitlements. -->
+	<!-- Debug uses development signing, whose provisioning profile grants the
+	     base "packet-tunnel-provider" value (Apple issues the "-systemextension"
+	     variant only in Developer ID / distribution profiles — see the Release
+	     entitlements). Keep this in sync with Ezvpn.macOS.entitlements except for
+	     that one string. -->
 	<key>com.apple.developer.networking.networkextension</key>
 	<array>
-		<string>packet-tunnel-provider-systemextension</string>
+		<string>packet-tunnel-provider</string>
 	</array>
-	<!-- Lets the app install/activate the packet-tunnel system extension via
-	     OSSystemExtensionRequest (see SystemExtensionManager). -->
 	<key>com.apple.developer.system-extension.install</key>
 	<true/>
 </dict>

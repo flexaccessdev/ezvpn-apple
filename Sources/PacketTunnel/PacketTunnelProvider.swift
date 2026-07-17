@@ -56,13 +56,43 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
 
         let serverNodeID = conf["server_node_id"] as? String ?? ""
-        guard let passwordReference = proto.passwordReference else {
-            completionHandler(Self.error("missing auth-token Keychain reference"))
-            return
-        }
         let authToken: String
         do {
+            #if os(macOS)
+            // The system extension is a root daemon: it cannot see the user's
+            // data-protection keychain, so the app hands the token over in the
+            // start options on every app-initiated connect, and the provider
+            // persists it in the System keychain (the daemon keychain) so
+            // system-initiated restarts can connect without the app.
+            guard
+                let idString = conf[ProviderConfigKey.profileID] as? String,
+                let profileID = UUID(uuidString: idString)
+            else {
+                completionHandler(Self.error("missing profile_id in providerConfiguration"))
+                return
+            }
+            if let optionToken = options?[TunnelStartOption.authToken] as? String,
+               !optionToken.isEmpty {
+                authToken = optionToken
+                do {
+                    try AuthTokenKeychain.persistDaemonToken(optionToken, for: profileID)
+                } catch {
+                    // The in-hand token still works for this session; only
+                    // app-less restarts are affected. Log and continue.
+                    os_log(
+                        "could not persist auth token to the System keychain: %{public}@",
+                        log: log, type: .error, error.localizedDescription)
+                }
+            } else {
+                authToken = try AuthTokenKeychain.daemonToken(for: profileID)
+            }
+            #else
+            guard let passwordReference = proto.passwordReference else {
+                completionHandler(Self.error("missing auth-token Keychain reference"))
+                return
+            }
             authToken = try AuthTokenKeychain.token(for: passwordReference)
+            #endif
         } catch {
             completionHandler(Self.error("failed to load auth token: \(error.localizedDescription)"))
             return

@@ -114,22 +114,29 @@ final class AppModelTests: XCTestCase {
 
         let firstReference = try AuthTokenKeychain.store(
             "first-token", for: id, client: client)
+        XCTAssertFalse(firstReference.isEmpty)
+        XCTAssertEqual(
+            try AuthTokenKeychain.token(forProfileID: id, client: client),
+            "first-token"
+        )
+        #if os(iOS)
         XCTAssertEqual(
             try AuthTokenKeychain.token(for: firstReference, client: client),
             "first-token"
         )
+        #endif
 
         let updatedReference = try AuthTokenKeychain.store(
             "updated-token", for: id, client: client)
         XCTAssertEqual(updatedReference, firstReference)
         XCTAssertEqual(
-            try AuthTokenKeychain.token(for: updatedReference, client: client),
+            try AuthTokenKeychain.token(forProfileID: id, client: client),
             "updated-token"
         )
 
         try AuthTokenKeychain.delete(for: id, client: client)
         XCTAssertThrowsError(
-            try AuthTokenKeychain.token(for: updatedReference, client: client))
+            try AuthTokenKeychain.token(forProfileID: id, client: client))
     }
 
     func testAttachReplacesManagerButPreservesFallbackName() throws {
@@ -221,19 +228,26 @@ private final class InMemoryAuthTokenKeychain {
     private func copyMatching(
         _ query: [String: Any]
     ) -> AuthTokenKeychainClient.Result {
-        if query[kSecReturnPersistentRef as String] as? Bool == true {
-            guard
-                let account = query[kSecAttrAccount as String] as? String,
-                let item = items[account]
-            else {
+        // Identity query (class + service + account): return the ref or the
+        // data, mirroring the real Keychain's kSecReturn* handling. A query
+        // with the right account but a mismatched service or class matches
+        // nothing.
+        if let account = query[kSecAttrAccount as String] as? String {
+            let classMatches =
+                (query[kSecClass as String] as? String) == (kSecClassGenericPassword as String)
+            let serviceMatches =
+                (query[kSecAttrService as String] as? String) == AuthTokenKeychain.service
+            guard classMatches, serviceMatches, let item = items[account] else {
                 return (errSecItemNotFound, nil)
             }
-            return (errSecSuccess, item.persistentReference)
+            if query[kSecReturnPersistentRef as String] as? Bool == true {
+                return (errSecSuccess, item.persistentReference)
+            }
+            return (errSecSuccess, item.tokenData)
         }
 
-        let reference =
-            query[kSecValuePersistentRef as String] as? Data
-            ?? (query[kSecMatchItemList as String] as? [Data])?.first
+        // Persistent-reference query (the iOS extension's path).
+        let reference = query[kSecValuePersistentRef as String] as? Data
         guard
             let reference,
             let item = items.values.first(where: {

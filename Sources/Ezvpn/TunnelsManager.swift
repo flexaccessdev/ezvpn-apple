@@ -29,6 +29,14 @@ final class TunnelsManager: ObservableObject {
     @Published private(set) var menuBarIconState: MenuBarIconState = .disconnected
     @Published var lastError: String?
 
+    #if os(macOS)
+    /// Activation state of the packet-tunnel system extension. On macOS the
+    /// tunnel cannot start until this reaches `.active`; the UI surfaces the
+    /// `.needsApproval`/`.failed` states so the user can act.
+    @Published private(set) var systemExtensionState: SystemExtensionState = .idle
+    private var systemExtensionManager: SystemExtensionManager?
+    #endif
+
     /// Bundle id of the Packet Tunnel extension. It is always the app's own
     /// bundle id plus the ".PacketTunnel" suffix (see PRODUCT_BUNDLE_IDENTIFIER
     /// in project.yml), so deriving it from Bundle.main keeps it correct under
@@ -53,6 +61,18 @@ final class TunnelsManager: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in await self?.reload() }
         }
+        #if os(macOS)
+        // Kick off activation of the packet-tunnel system extension. This is
+        // asynchronous (it may need user approval), so it runs alongside the
+        // reload below rather than gating it.
+        let sysext = SystemExtensionManager(
+            extensionIdentifier: providerBundleID
+        ) { [weak self] state in
+            self?.systemExtensionState = state
+        }
+        systemExtensionManager = sysext
+        sysext.activate()
+        #endif
         Task { await reload() }
     }
 

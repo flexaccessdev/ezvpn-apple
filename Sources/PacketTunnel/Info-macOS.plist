@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>ezvpn Tunnel</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>EZVPNKeychainAccessGroup</key>
+	<string>$(KEYCHAIN_ACCESS_GROUP)</string>
+	<!-- Required for the network_extension system-extension category; shown to
+	     the user in the System Settings approval flow. Activation fails without
+	     it ("require the presence of the 'NSSystemExtensionUsageDescription'
+	     property"). -->
+	<key>NSSystemExtensionUsageDescription</key>
+	<string>ezvpn uses this network extension to run its VPN tunnel.</string>
+	<!-- System extensions declare their provider through NetworkExtension /
+	     NEProviderClasses (the .appex NSExtension mechanism does not apply). The
+	     key maps the packet-tunnel extension point to the same principal class
+	     the iOS app extension uses; $(PRODUCT_MODULE_NAME) resolves to this
+	     target's module (PacketTunnelSysEx). -->
+	<key>NetworkExtension</key>
+	<dict>
+		<key>NEProviderClasses</key>
+		<dict>
+			<key>com.apple.networkextension.packet-tunnel</key>
+			<string>$(PRODUCT_MODULE_NAME).PacketTunnelProvider</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

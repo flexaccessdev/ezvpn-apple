@@ -1,9 +1,11 @@
 # ezvpn-apple
 
-A universal native iOS + macOS SwiftUI app and Packet Tunnel app extension that
-runs the [`ezvpn`](../ezvpn) IP-over-QUIC tunnel. **Scope:** dual-stack **split
-tunnel**, optional tunnel DNS on iOS only, development-signed personal use, and
-no App Store or Developer ID preparation.
+A universal native iOS + macOS SwiftUI app running the [`ezvpn`](../ezvpn)
+IP-over-QUIC tunnel. The packet-tunnel provider ships as an **app extension on
+iOS** and a **system extension on macOS** (the packaging Apple requires for
+Developer ID distribution outside the App Store). **Scope:** dual-stack **split
+tunnel**, optional tunnel DNS on iOS only, and macOS distribution via Developer
+ID + notarization (`scripts/create-archive-macos.sh`).
 
 It links `libezvpn.xcframework` (the Rust core, built from the sibling `../ezvpn`
 repo and delivered via a local Swift package) into a `NEPacketTunnelProvider`.
@@ -51,10 +53,14 @@ Network Extension owns the `utun` interface, routing, and IP/MTU config.
   iOS, DNS settings — queried live from the tunnel process over the WireGuard-style
   runtime-configuration app message (single byte `0`). It can also show a live
   iroh connection-path snapshot (direct/relay paths) via app message byte `1`.
-- ❌ No App Store, TestFlight, or Developer ID setup. The macOS debug flow uses
-  a development-signed app extension; system extensions are needed only for
-  Developer ID distribution. A Packet Tunnel Provider cannot run in the iOS
-  Simulator.
+- ✅ macOS distribution for anyone, outside the App Store: the tunnel ships as a
+  system extension and `scripts/create-archive-macos.sh` produces a Developer-ID-
+  signed, notarized, stapled `.dmg`. The app activates the extension via
+  `OSSystemExtensionRequest` at first launch (approved once in System Settings);
+  activation requires the app to run from `/Applications`.
+- ❌ No App Store or TestFlight submission. iOS still installs only via a
+  development-signed build to a registered device. A Packet Tunnel Provider
+  cannot run in the iOS Simulator.
 
 ## Prebuilt downloads (GitHub Releases)
 
@@ -138,8 +144,9 @@ versions to the release version).
    > `dist/apple` is reached via the committed symlink
    > `Packages/Ezvpn/local/libezvpn.xcframework`.
 
-2. **Set signing.** Select your Team on **both** targets (`Ezvpn` and
-   `PacketTunnel`) under *Signing & Capabilities*. For repeatable command-line
+2. **Set signing.** Select your Team on all three targets (`Ezvpn`,
+   `PacketTunnel` [iOS app extension], and `PacketTunnelSysEx` [macOS system
+   extension]) under *Signing & Capabilities*. For repeatable command-line
    builds, copy `Developer.local.xcconfig.sample` to
    `Developer.local.xcconfig`, set `DEVELOPMENT_TEAM`, and re-run
    `xcodegen generate`.
@@ -148,7 +155,8 @@ versions to the release version).
    `com.example.ezvpn`, which signs under no team (it only builds unsigned). To
    sign, set `BUNDLE_ID_PREFIX` in the same `Developer.local.xcconfig` to a
    prefix your team owns — nothing else to edit: the app id, the `.PacketTunnel`
-   extension id, and the extension id the app targets
+   extension id (shared by both the iOS app extension and the macOS system
+   extension), and the id the app targets
    (`TunnelsManager.providerBundleID`, derived from `Bundle.main`) all follow it.
    (The keychain access group is `$(AppIdentifierPrefix)ezvpn.shared` — team-
    prefixed but otherwise a neutral constant, so it does not depend on the
@@ -203,14 +211,58 @@ xcodebuild test -project Ezvpn.xcodeproj -scheme Ezvpn \
   -destination 'platform=macOS,arch=arm64'
 ```
 
+## Distribute the macOS app (Developer ID)
+
+`scripts/create-archive-macos.sh` builds, Developer-ID-signs, notarizes, staples,
+and packages a drag-to-Applications `.dmg` that runs on any Mac — no App Store.
+
+One-time Apple-side setup (the script cannot do these for you):
+
+1. Create a **Developer ID Application** certificate: Xcode › Settings ›
+   Accounts › Manage Certificates › **+** › *Developer ID Application*.
+2. Create the two **manually managed Developer ID provisioning profiles** that
+   `project.yml` pins by name for Release macOS builds — "ezvpn Developer ID
+   app" (App ID `<prefix>`) and "ezvpn Developer ID sysex" (App ID
+   `<prefix>.PacketTunnel`) — on the developer portal (Certificates,
+   Identifiers & Profiles › Profiles › + › Developer ID, or via the App Store
+   Connect API with an Admin key, `profileType: MAC_APP_DIRECT`). Once they
+   exist, `-allowProvisioningUpdates` downloads them on any machine. They must
+   be manually managed: Release macOS builds sign manually with Developer ID
+   (automatic signing can only archive with a development identity, whose
+   profile cannot carry the release entitlements'
+   `packet-tunnel-provider-systemextension` value, and manual signing refuses
+   Xcode-managed profiles).
+3. Create an **App Store Connect API key** for notarization (App Store Connect ›
+   Users and Access › Integrations › App Store Connect API) and download its
+   `AuthKey_XXXX.p8`. Cache it as a notarytool profile once:
+
+   ```sh
+   xcrun notarytool store-credentials ezvpn-notary \
+     --key AuthKey_XXXX.p8 --key-id <KEY_ID> --issuer <ISSUER_UUID>
+   ```
+
+Then, with `DEVELOPMENT_TEAM` set in `Developer.local.xcconfig`:
+
+```sh
+xcodegen generate
+scripts/create-archive-macos.sh --notary-profile ezvpn-notary
+```
+
+The result is `build/ezvpn-<version>.dmg`. Recipients drag **ezvpn** to
+Applications, launch it, and approve the network extension once in System
+Settings (the app requests activation on first launch). Pass `-m debugging`
+instead for a local development-signed `.app` (no notarization or `.dmg`; runs
+only on machines registered to your team). Run `--help` for all options.
+
 ## How it fits together
 
 ```
 ┌─────────────────────────┐        ┌──────────────────────────────┐
-│ Ezvpn (SwiftUI)         │        │ PacketTunnel (extension)     │
-│ NETunnelProviderManager │──VPN──▶│ NEPacketTunnelProvider       │
-│  installs config,       │ config │  startTunnel:                │
-│  start/stop             │        │   ezvpn_connect(json) ───────┼──▶ libezvpn
+│ Ezvpn (SwiftUI)         │        │ PacketTunnel (iOS) /         │
+│ NETunnelProviderManager │──VPN──▶│ PacketTunnelSysEx (macOS)    │
+│  installs config,       │ config │ NEPacketTunnelProvider       │
+│  start/stop             │        │  startTunnel:                │
+│                         │        │   ezvpn_connect(json) ───────┼──▶ libezvpn
 └─────────────────────────┘        │   setTunnelNetworkSettings   │    (iroh connect
                                     │   ezvpn_run(utun_fd) ────────┼──▶  + handshake
                                     │  stopTunnel: ezvpn_stop      │     + datagram loop)
@@ -242,9 +294,10 @@ in the device or Mac log as well.
 - One benign linker warning (`blake3_neon.o was built for newer iOS version`)
   comes from a dependency's hand-written assembly object; it links and runs
   fine.
-- If the macOS app extension does not appear, check for stale or duplicate
-  providers with
-  `pluginkit -m -p com.apple.networkextension.packet-tunnel`; retry
-  `scripts/run-macos.sh --install` if DerivedData registration is the issue.
+- If the macOS system extension does not activate, list registered extensions
+  with `systemextensionsctl list`. A development-signed build only activates from
+  `/Applications` (retry `scripts/run-macos.sh --install`) or with
+  `systemextensionsctl developer on`. Distributed (Developer ID + notarized)
+  builds activate from `/Applications` with no developer mode.
 - Regenerate the project (`xcodegen generate`) after editing `project.yml`. The
   `.xcodeproj` is git-ignored on purpose.
