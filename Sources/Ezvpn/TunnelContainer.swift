@@ -151,9 +151,26 @@ final class TunnelContainer: ObservableObject, Identifiable {
             }
         }
 
+        let options: [String: NSObject]?
+        #if os(macOS)
+        // The system extension (a root daemon) cannot read the user's
+        // data-protection keychain, so every app-initiated connect hands it
+        // the token; the provider persists it in the System keychain for
+        // system-initiated restarts. See AuthTokenKeychain.
+        do {
+            options = [TunnelStartOption.authToken: try authToken() as NSString]
+        } catch {
+            isAttemptingActivation = false
+            lastError = "auth token unavailable: \(error.localizedDescription)"
+            return
+        }
+        #else
+        options = nil
+        #endif
+
         do {
             isAttemptingActivation = true
-            try (manager.connection as? NETunnelProviderSession)?.startTunnel(options: nil)
+            try (manager.connection as? NETunnelProviderSession)?.startTunnel(options: options)
             refreshStatus()
         } catch let error as NEVPNError
             where (error.code == .configurationInvalid || error.code == .configurationStale)

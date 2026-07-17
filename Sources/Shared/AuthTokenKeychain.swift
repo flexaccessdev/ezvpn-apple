@@ -1,6 +1,14 @@
 import Foundation
 import Security
 
+/// Keys for the transient `startTunnel(options:)` dictionary the app passes to
+/// the provider. Options travel in memory through the NE session — never
+/// persisted by the system — which makes them the delivery channel for the
+/// auth token on macOS (see the daemon storage note in AuthTokenKeychain).
+enum TunnelStartOption {
+    static let authToken = "ezvpn.auth-token"
+}
+
 struct AuthTokenKeychainClient {
     typealias Result = (status: OSStatus, value: Any?)
 
@@ -115,6 +123,69 @@ enum AuthTokenKeychain {
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         return try decodeToken(client.copyMatching(query))
     }
+
+    #if os(macOS)
+    // MARK: Daemon-side storage (packet-tunnel system extension)
+    //
+    // The system extension runs as a root launchd daemon. The data-protection
+    // keychain only exists in a user context (there is no secd to talk to,
+    // and the user's items belong to the user's keybag), so the identity
+    // queries above cannot work there. Daemons default to the legacy System
+    // keychain (/Library/Keychains/System.keychain), which root reads and
+    // writes without user interaction on macOS 14+. The app therefore hands
+    // the token to the provider in the tunnel-start options
+    // (TunnelStartOption.authToken); the provider persists it here so
+    // system-initiated restarts (reboot, crash recovery) can still connect.
+    // No kSecUseDataProtectionKeychain and no kSecAttrAccessGroup: both are
+    // data-protection-keychain concepts.
+
+    static func persistDaemonToken(
+        _ token: String,
+        for profileID: UUID,
+        client: AuthTokenKeychainClient = .security
+    ) throws {
+        guard !token.isEmpty, let tokenData = token.data(using: .utf8) else {
+            throw AuthTokenKeychainError.invalidToken
+        }
+        var addQuery = daemonIdentityQuery(for: profileID)
+        addQuery[kSecValueData as String] = tokenData
+
+        let (status, _) = client.add(addQuery)
+        switch status {
+        case errSecSuccess:
+            return
+        case errSecDuplicateItem:
+            let updateStatus = client.update(
+                daemonIdentityQuery(for: profileID),
+                [kSecValueData as String: tokenData])
+            guard updateStatus == errSecSuccess else {
+                throw AuthTokenKeychainError.security(
+                    operation: "update daemon auth token", status: updateStatus)
+            }
+        default:
+            throw AuthTokenKeychainError.security(
+                operation: "store daemon auth token", status: status)
+        }
+    }
+
+    static func daemonToken(
+        for profileID: UUID,
+        client: AuthTokenKeychainClient = .security
+    ) throws -> String {
+        var query = daemonIdentityQuery(for: profileID)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        return try decodeToken(client.copyMatching(query))
+    }
+
+    private static func daemonIdentityQuery(for profileID: UUID) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: profileID.uuidString,
+        ]
+    }
+    #endif
 
     private static func decodeToken(
         _ result: AuthTokenKeychainClient.Result
