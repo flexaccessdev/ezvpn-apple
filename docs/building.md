@@ -74,10 +74,40 @@ versions to the release version).
    ```
 
    This uses the local XCFramework by default; pass `--pinned` for the release
-   artifact or `--install` to copy the app to `/Applications` if the extension
-   does not register from DerivedData. For iOS, select a physical device in
-   Xcode or use `scripts/run-device-ios.sh <DEVICE_ID>`. The OS prompts to allow
-   the VPN configuration on first connect.
+   artifact. For iOS, select a physical device in Xcode or use
+   `scripts/run-device-ios.sh <DEVICE_ID>`. The OS prompts to allow the VPN
+   configuration on first connect.
+
+   > **Activating the macOS system extension in Debug.** macOS refuses to
+   > activate a development-signed system extension unless the containing app
+   > runs from `/Applications`. Straight from DerivedData you get:
+   >
+   > ```
+   > Couldn't install the network extension: App containing System Extension
+   > to be activated must be in /Applications folder. Current location: …/DerivedData/…/ezvpn.app
+   > ```
+   >
+   > Two ways to get past it:
+   >
+   > - **Enable developer mode (best for iterating).** Lets the extension
+   >   activate from DerivedData, so you keep running `scripts/run-macos.sh`
+   >   unchanged. Persists across reboots until turned off:
+   >
+   >   ```sh
+   >   systemextensionsctl developer on   # off to revert
+   >   ```
+   >
+   > - **Run from `/Applications`.** `scripts/run-macos.sh --install` copies the
+   >   built app to `/Applications/ezvpn.app` and launches it from there.
+   >
+   > Either way, approve the extension in *System Settings → Privacy & Security*
+   > on first activation.
+   >
+   > **Iterating on extension code:** `sysextd` will not replace an installed
+   > extension that has the same version, so the old binary silently keeps
+   > running. Bump `CURRENT_PROJECT_VERSION` in `project.yml` whenever you change
+   > extension code (the run script re-runs `xcodegen generate` for you).
+   > Inspect what is registered with `systemextensionsctl list`.
 
 4. **Add a profile** (tap `+`), fill in the details, Save, then toggle it on:
    - *Name* — a unique label for the profile (shown in the list and Settings > VPN).
