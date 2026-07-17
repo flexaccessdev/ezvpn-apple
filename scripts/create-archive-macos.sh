@@ -170,6 +170,22 @@ if [[ "$NOTARIZE" -eq 1 ]]; then
   fi
 fi
 
+# When an App Store Connect API key is supplied, also hand it to xcodebuild so
+# -allowProvisioningUpdates can download the manually-managed Developer ID
+# profiles non-interactively. Local runs with an Xcode account signed in don't
+# need this (the profiles come from the account), but a fresh CI runner has no
+# account, so the key is the only way in. Independent of notarization — the
+# archive needs profiles even under --skip-notarize.
+PROFILE_AUTH_ARGS=()
+if [[ -n "$NOTARY_KEY" && -n "$NOTARY_KEY_ID" && -n "$NOTARY_ISSUER" ]]; then
+  [[ -f "$NOTARY_KEY" ]] || die "--key file not found: $NOTARY_KEY"
+  PROFILE_AUTH_ARGS=(
+    -authenticationKeyPath "$NOTARY_KEY"
+    -authenticationKeyID "$NOTARY_KEY_ID"
+    -authenticationKeyIssuerID "$NOTARY_ISSUER"
+  )
+fi
+
 # Fail fast, before the long archive step, if the Developer ID certificate is
 # missing. The two named provisioning profiles project.yml pins need no check:
 # -allowProvisioningUpdates downloads manually managed profiles on demand.
@@ -223,6 +239,7 @@ xcodebuild archive \
   -sdk macosx \
   -archivePath "$ARCHIVE_PATH" \
   -allowProvisioningUpdates \
+  ${PROFILE_AUTH_ARGS[@]+"${PROFILE_AUTH_ARGS[@]}"} \
   DEVELOPMENT_TEAM="$TEAM_ID"
 
 /bin/mkdir -p "$EXPORT_PATH"
