@@ -1,13 +1,14 @@
 name: Release macOS DMG (Manual)
 
 # Builds a Developer-ID-signed, notarized, stapled drag-to-Applications .dmg and
-# uploads it as a workflow artifact. Manual only — never runs on push/PR, so the
-# signing identity and API key in secrets are never exposed to untrusted code.
+# attaches it to a published GitHub prerelease. Manual only — never runs on
+# push/PR, so the signing identity and API key in secrets are never exposed to
+# untrusted code.
 on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 # One run at a time. A second dispatch queues instead of running in parallel,
 # and cancel-in-progress is false so an in-flight notarization is never killed.
@@ -16,7 +17,50 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.tag.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Generate tag
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          timestamp="$(date -u +'%Y%m%d%H%M%S')"
+          short_sha="$(git rev-parse --short=7 "$GITHUB_SHA")"
+          # macos- prefix keeps these releases distinct from the iOS workflow's.
+          echo "release_tag=macos-${timestamp}-${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Abort if tag already exists
+        run: |
+          if git ls-remote --tags origin "refs/tags/${{ steps.tag.outputs.release_tag }}" | grep -q .; then
+            echo "::error::Tag ${{ steps.tag.outputs.release_tag }} already exists on remote"
+            exit 1
+          fi
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "${{ steps.tag.outputs.release_tag }}" --json isDraft --jq '.isDraft' 2>/dev/null | grep -qx true; then
+            echo "Deleting stale draft release ${{ steps.tag.outputs.release_tag }}"
+            gh release delete "${{ steps.tag.outputs.release_tag }}" --yes
+          fi
+
+          gh release create "${{ steps.tag.outputs.release_tag }}" \
+            --draft \
+            --prerelease \
+            --target "${{ github.sha }}" \
+            --title "Prerelease macOS ${{ steps.tag.outputs.release_tag }}" \
+            --generate-notes
+
   build-macos:
+    needs: setup
     name: Build notarized macOS DMG
     runs-on: macos-latest
     timeout-minutes: 90
@@ -39,8 +83,8 @@ jobs:
           BUNDLE_ID_PREFIX: ${{ vars.BUNDLE_ID_PREFIX }}
         run: |
           set -euo pipefail
-          [[ -n "$DEVELOPMENT_TEAM" ]] || { echo "::error::secret DEVELOPMENT_TEAM is empty"; exit 1; }
-          [[ -n "$BUNDLE_ID_PREFIX" ]] || { echo "::error::secret BUNDLE_ID_PREFIX is empty"; exit 1; }
+          [[ -n "$DEVELOPMENT_TEAM" ]] || { echo "::error::variable DEVELOPMENT_TEAM is empty"; exit 1; }
+          [[ -n "$BUNDLE_ID_PREFIX" ]] || { echo "::error::variable BUNDLE_ID_PREFIX is empty"; exit 1; }
           # Developer.xcconfig #include?s this file; it must exist before
           # xcodegen so the real team + bundle prefix flow into the project
           # (the committed com.example.ezvpn default only builds unsigned).
@@ -119,12 +163,11 @@ jobs:
           dmg="$(/bin/ls build/*.dmg | head -1)"
           test -f "$dmg"
           echo "path=$dmg" >> "$GITHUB_OUTPUT"
-          echo "name=$(basename "$dmg")" >> "$GITHUB_OUTPUT"
 
       - name: Upload notarized DMG
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ steps.dmg.outputs.name }}
+          name: release-macos
           path: ${{ steps.dmg.outputs.path }}
           if-no-files-found: error
 
@@ -133,3 +176,30 @@ jobs:
         run: |
           security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" 2>/dev/null || true
           rm -f "$RUNNER_TEMP/keys/AuthKey.p8" "$RUNNER_TEMP/developer-id.p12" || true
+
+  publish-release:
+    needs: [setup, build-macos]
+    if: always() && needs.setup.result == 'success' && needs.build-macos.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: List release artifacts
+        run: ls -la artifacts/
+
+      - name: Upload artifacts to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release upload "${{ needs.setup.outputs.release_tag }}" artifacts/* --clobber
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "${{ needs.setup.outputs.release_tag }}" --draft=false
