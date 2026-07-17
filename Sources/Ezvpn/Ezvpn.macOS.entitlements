@@ -10,7 +10,9 @@
 	<array>
 		<string>packet-tunnel-provider</string>
 	</array>
-	<key>com.apple.security.app-sandbox</key>
+	<!-- Lets the app install/activate the packet-tunnel system extension via
+	     OSSystemExtensionRequest (see SystemExtensionManager). -->
+	<key>com.apple.developer.system-extension.install</key>
 	<true/>
 </dict>
 </plist>

@@ -20,6 +20,11 @@ struct MenuBarView: View {
 
         Divider()
 
+        if let notice = systemExtensionNotice {
+            Text(notice)
+            Divider()
+        }
+
         if manager.tunnels.isEmpty {
             Text("No profiles")
         } else {
@@ -34,6 +39,19 @@ struct MenuBarView: View {
 
         Button("Quit ezvpn") {
             NSApplication.shared.terminate(nil)
+        }
+    }
+
+    /// Short menu-bar line mirroring the in-window system-extension banner; nil
+    /// on the happy path so the menu stays uncluttered.
+    private var systemExtensionNotice: String? {
+        switch manager.systemExtensionState {
+        case .needsApproval:
+            return "⚠ Approve the network extension in System Settings"
+        case .failed:
+            return "⚠ Network extension not installed"
+        case .idle, .activating, .active:
+            return nil
         }
     }
 }

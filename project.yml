@@ -1,9 +1,14 @@
 # XcodeGen spec for the native iOS + macOS ezvpn app.
 #
 # Generate the Xcode project with:   xcodegen generate
-# Then open Ezvpn.xcodeproj, select your signing Team on BOTH targets, and run
-# on a Mac or a real iOS device (a Packet Tunnel Provider cannot run in the
-# iOS Simulator).
+# Then open Ezvpn.xcodeproj, select your signing Team on all three targets
+# (Ezvpn, PacketTunnel, PacketTunnelSysEx), and run on a Mac or a real iOS
+# device (a Packet Tunnel Provider cannot run in the iOS Simulator).
+#
+# The packet-tunnel provider ships two ways from one set of shared sources: an
+# app extension on iOS (PacketTunnel) and a system extension on macOS
+# (PacketTunnelSysEx, required for Developer ID distribution). See the
+# PacketTunnelBase template and those two targets below.
 #
 # The Rust static library + header come from the local Swift package in
 # Packages/Ezvpn — a binary target that downloads the pinned release zip
@@ -74,6 +79,64 @@ schemes:
     archive:
       config: Release
 
+# Shared configuration for the two packet-tunnel targets (iOS app-extension and
+# macOS system-extension). They compile the same sources and link the same
+# packages; only product type, destination, entitlements, and Info.plist differ
+# (set on each target). Keeping the shared bits here means the bundle id and
+# keychain group can never drift between the two products.
+targetTemplates:
+  PacketTunnelBase:
+    sources:
+      # Exclude both Info.plists from target membership: each target points at
+      # the right one via INFOPLIST_FILE, and leaving them in the file list
+      # would bundle the other platform's plist as a stray resource.
+      - path: Sources/PacketTunnel
+        excludes:
+          - Info.plist
+          - Info-macOS.plist
+      - Sources/Shared
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).PacketTunnel
+        # Team-prefixed ($(AppIdentifierPrefix) is required for keychain sharing)
+        # but otherwise a neutral constant — the group name is not tied to the
+        # bundle id, so it is stable across any $(BUNDLE_ID_PREFIX). App and
+        # extension must carry the identical value; keep these in sync.
+        KEYCHAIN_ACCESS_GROUP: "$(AppIdentifierPrefix)ezvpn.shared"
+        "ARCHS[sdk=macosx*]": arm64
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/PacketTunnel/Bridging-Header.h
+        # No LIBRARY_SEARCH_PATHS/HEADER_SEARCH_PATHS/-lezvpn needed: SPM links
+        # the binary target's library and puts its embedded Headers/ dir on the
+        # consumer's search path, so the bridging header's `#import "ezvpn.h"`
+        # resolves automatically. The Rust lib comes from the package binary
+        # target; here we only add its system dependencies.
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -lresolv
+          - -lc++
+          - -framework
+          - Security
+          - -framework
+          - SystemConfiguration
+        # iroh's macOS network monitor queries Wi-Fi link state through
+        # CoreWLAN. Static XCFrameworks do not propagate that framework link
+        # requirement to their consumer, so the extension must add it here.
+        # Harmless on iOS (never built against the macOS SDK).
+        "OTHER_LDFLAGS[sdk=macosx*]":
+          - $(inherited)
+          - -framework
+          - CoreWLAN
+        MARKETING_VERSION: "0.0.23"
+        CURRENT_PROJECT_VERSION: "1"
+    dependencies:
+      - sdk: NetworkExtension.framework
+      # Static-library XCFramework delivered via the sibling's Swift package
+      # binary target (downloads the pinned release zip by URL+checksum).
+      - package: Ezvpn
+        product: libezvpn
+      - package: TunnelCore
+        product: TunnelCore
+
 targets:
   Ezvpn:
     type: application
@@ -96,13 +159,29 @@ targets:
         "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Sources/Ezvpn/Ezvpn.macOS.entitlements
         "ARCHS[sdk=macosx*]": arm64
         "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": "@executable_path/../Frameworks"
+        # Developer ID distribution requires the Hardened Runtime (a
+        # notarization prerequisite). macOS only — iOS App Store builds neither
+        # use nor accept it.
+        "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Sources/Ezvpn/Info.plist
         MARKETING_VERSION: "0.0.23"
         CURRENT_PROJECT_VERSION: "1"
     dependencies:
+      # The packet-tunnel provider ships as an app extension on iOS (the only
+      # option there) and a system extension on macOS (required for Developer ID
+      # distribution outside the App Store). Same shared sources, two products;
+      # each embeds only on its platform. The macOS sysex lands in
+      # Contents/Library/SystemExtensions, where the OS activates it on request.
       - target: PacketTunnel
         embed: true
+        destinationFilters: [iOS]
+      - target: PacketTunnelSysEx
+        embed: true
+        destinationFilters: [macOS]
+        copy:
+          destination: wrapper
+          subpath: Contents/Library/SystemExtensions
       # The app now shares the pure profile model + name validation with the
       # extension (TunnelProfile, validateTunnelName). The extension also links
       # this package for the IP/CIDR primitives.
@@ -131,52 +210,36 @@ targets:
       - package: TunnelCore
         product: TunnelCore
 
+  # iOS ships the tunnel as an app extension (.appex). No macOS-specific
+  # overrides here — the macOS product is PacketTunnelSysEx below.
   PacketTunnel:
     type: app-extension
-    supportedDestinations: [iOS, macOS]
-    sources:
-      - Sources/PacketTunnel
-      - Sources/Shared
+    supportedDestinations: [iOS]
+    templates:
+      - PacketTunnelBase
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).PacketTunnel
-        # Team-prefixed ($(AppIdentifierPrefix) is required for keychain sharing)
-        # but otherwise a neutral constant — the group name is not tied to the
-        # bundle id, so it is stable across any $(BUNDLE_ID_PREFIX). App and
-        # extension must carry the identical value; keep these two in sync.
-        KEYCHAIN_ACCESS_GROUP: "$(AppIdentifierPrefix)ezvpn.shared"
         CODE_SIGN_ENTITLEMENTS: Sources/PacketTunnel/PacketTunnel.entitlements
-        "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Sources/PacketTunnel/PacketTunnel.macOS.entitlements
-        "ARCHS[sdk=macosx*]": arm64
         INFOPLIST_FILE: Sources/PacketTunnel/Info.plist
-        SWIFT_OBJC_BRIDGING_HEADER: Sources/PacketTunnel/Bridging-Header.h
-        # No LIBRARY_SEARCH_PATHS/HEADER_SEARCH_PATHS/-lezvpn needed: SPM links
-        # the binary target's library and puts its embedded Headers/ dir on the
-        # consumer's search path, so the bridging header's `#import "ezvpn.h"`
-        # resolves automatically. The Rust lib comes from the package binary
-        # target; here we only add its system dependencies.
-        OTHER_LDFLAGS:
-          - $(inherited)
-          - -lresolv
-          - -lc++
-          - -framework
-          - Security
-          - -framework
-          - SystemConfiguration
-        # iroh's macOS network monitor queries Wi-Fi link state through
-        # CoreWLAN. Static XCFrameworks do not propagate that framework link
-        # requirement to their consumer, so the extension must add it here.
-        "OTHER_LDFLAGS[sdk=macosx*]":
-          - $(inherited)
-          - -framework
-          - CoreWLAN
-        MARKETING_VERSION: "0.0.23"
-        CURRENT_PROJECT_VERSION: "1"
-    dependencies:
-      - sdk: NetworkExtension.framework
-      # Static-library XCFramework delivered via the sibling's Swift package
-      # binary target (downloads the pinned release zip by URL+checksum).
-      - package: Ezvpn
-        product: libezvpn
-      - package: TunnelCore
-        product: TunnelCore
+
+  # macOS ships the identical provider as a system extension (.systemextension),
+  # the only packaging Apple allows for a Developer-ID-signed network extension
+  # distributed outside the App Store. The app activates it via
+  # OSSystemExtensionRequest (see SystemExtensionManager). Its bundle id stays
+  # $(BUNDLE_ID_PREFIX).PacketTunnel — identical to the iOS appex and to the id
+  # TunnelsManager derives — so the NETunnelProviderProtocol wiring is unchanged.
+  PacketTunnelSysEx:
+    type: system-extension
+    supportedDestinations: [macOS]
+    templates:
+      - PacketTunnelBase
+    # main.swift (the executable entry point a system extension needs, absent
+    # from the shared iOS app-extension sources) belongs to this target only.
+    sources:
+      - Sources/PacketTunnelSysEx
+    settings:
+      base:
+        CODE_SIGN_ENTITLEMENTS: Sources/PacketTunnel/PacketTunnel.macOS.entitlements
+        INFOPLIST_FILE: Sources/PacketTunnel/Info-macOS.plist
+        # Notarization prerequisite; the containing app enables it too.
+        ENABLE_HARDENED_RUNTIME: YES

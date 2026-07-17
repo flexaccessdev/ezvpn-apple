@@ -10,11 +10,9 @@
 	<array>
 		<string>packet-tunnel-provider</string>
 	</array>
-	<key>com.apple.security.app-sandbox</key>
-	<true/>
-	<key>com.apple.security.network.client</key>
-	<true/>
-	<key>com.apple.security.network.server</key>
-	<true/>
+	<!-- No com.apple.security.app-sandbox here: a macOS packet-tunnel system
+	     extension runs as a system daemon, not a sandboxed app extension, so the
+	     sandbox (and its network-client/server sub-entitlements) does not apply.
+	     The iOS app-extension variant keeps its sandbox in PacketTunnel.entitlements. -->
 </dict>
 </plist>
