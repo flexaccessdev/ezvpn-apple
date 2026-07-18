@@ -92,18 +92,16 @@ the DMG is built (locally or in CI).
 
 ### iOS — you must build and sign it yourself
 
-There is **no ready-to-run iOS download.** The **Release iOS (Manual)** workflow
-(`.github/workflows/release-ios.yml`) only attaches an **unsigned** bundle for
-build verification and inspection:
+There is **no ready-to-run iOS download** and no prebuilt bundle to inspect. The
+**Validate iOS (Manual)** workflow (`.github/workflows/validate-ios.yml`) only
+runs the test suites (TunnelCore + app models) to validate the sources; it does
+not build or attach an app bundle.
 
-- `ezvpn-ios-unsigned.tar.gz` — the iOS `ezvpn.app` (`ios-arm64`, device only).
-
-**This is not installable as-is, and it cannot be re-signed into a working app.**
-A Packet Tunnel Provider uses the restricted
+Running the iOS app means **building it from source under your own team.** A
+Packet Tunnel Provider uses the restricted
 `com.apple.developer.networking.networkextension` entitlement, which requires
 **explicit, non-wildcard App IDs registered to your own paid team** — a shared
-id can't be reused across accounts. So running the iOS app means **building from
-source under your own team**, not re-signing the download.
+id can't be reused across accounts.
 
 Follow [docs/building.md](docs/building.md): copy
 `Developer.local.xcconfig.sample` to `Developer.local.xcconfig`, set your
