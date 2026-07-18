@@ -126,7 +126,7 @@ targetTemplates:
           - $(inherited)
           - -framework
           - CoreWLAN
-        MARKETING_VERSION: "0.0.23"
+        MARKETING_VERSION: "0.0.24"
         CURRENT_PROJECT_VERSION: "2"
     dependencies:
       - sdk: NetworkExtension.framework
@@ -167,7 +167,7 @@ targets:
         "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Sources/Ezvpn/Info.plist
-        MARKETING_VERSION: "0.0.23"
+        MARKETING_VERSION: "0.0.24"
         CURRENT_PROJECT_VERSION: "2"
       configs:
         Debug:
