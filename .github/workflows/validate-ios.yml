@@ -46,6 +46,26 @@ jobs:
             DEVELOPMENT_TEAM="" \
             COMPILER_INDEX_STORE_ENABLE=NO
 
+      # Compile-check the iOS target (app + PacketTunnel extension) against the
+      # iOS slice of libezvpn.xcframework. The app-model test above only builds
+      # for macOS, so this is the only step that exercises iOS-target and
+      # `#if os(iOS)` code paths. Dry run only: no signing, no packaging, no
+      # artifact upload, no release.
+      - name: Build iOS (compile check, no artifact)
+        run: |
+          xcodebuild build \
+            -project Ezvpn.xcodeproj \
+            -scheme Ezvpn \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -sdk iphoneos \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData-iOS" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM="" \
+            COMPILER_INDEX_STORE_ENABLE=NO
+
       - name: Upload test results
         if: failure()
         uses: actions/upload-artifact@v7
