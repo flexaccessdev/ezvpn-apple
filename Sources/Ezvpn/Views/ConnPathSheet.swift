@@ -11,10 +11,11 @@ import SwiftUI
 /// round trip to the tunnel extension, hence async.
 struct ConnPathSheet: View {
     /// Snapshots the live paths right now (`TunnelContainer.queryConnPaths()`).
-    let query: () async -> [TunnelConnectionPath]
+    let query: () async -> TunnelConnectionSnapshot
 
     @Environment(\.dismiss) private var dismiss
     @State private var paths: [TunnelConnectionPath] = []
+    @State private var customRelays: [TunnelCustomRelay] = []
 
     var body: some View {
         NavigationStack {
@@ -32,6 +33,24 @@ struct ConnPathSheet: View {
                 } footer: {
                     Text("Snapshot taken just now — how this session reaches the server. Direct paths are peer-to-peer; relay paths hop through an iroh relay.")
                 }
+                if !customRelays.isEmpty {
+                    Section {
+                        ForEach(customRelays) { relay in
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(relay.url)
+                                    .font(.system(.footnote, design: .monospaced))
+                                    .textSelection(.enabled)
+                                Text(relayStatus(relay))
+                                    .font(.caption)
+                                    .foregroundStyle(relay.working == true ? .green : .secondary)
+                            }
+                        }
+                    } header: {
+                        Text("Custom relays")
+                    } footer: {
+                        Text("Health is reported by the running iroh endpoint; unavailable means it has not observed this relay yet.")
+                    }
+                }
             }
             .navigationTitle("Connection path")
             .inlineNavigationTitle()
@@ -41,14 +60,14 @@ struct ConnPathSheet: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
-                        Task { paths = await query() }
+                        Task { await refresh() }
                     } label: {
                         Image(systemName: "arrow.clockwise")
                     }
                     .accessibilityLabel("Refresh")
                 }
             }
-            .task { paths = await query() }
+            .task { await refresh() }
         }
         #if os(iOS)
         .presentationDetents([.medium, .large])
@@ -56,6 +75,20 @@ struct ConnPathSheet: View {
         .presentationSizing(.fitted)
         .frame(minWidth: 440, minHeight: 320)
         #endif
+    }
+
+    private func refresh() async {
+        let snapshot = await query()
+        paths = snapshot.paths
+        customRelays = snapshot.customRelays
+    }
+
+    private func relayStatus(_ relay: TunnelCustomRelay) -> String {
+        switch relay.working {
+        case true: return "Working"
+        case false: return relay.error.map { "Not working — \($0)" } ?? "Not working"
+        case nil: return "Status unavailable"
+        }
     }
 }
 

@@ -60,11 +60,17 @@ final class TunnelSnapshotDecoderTests: XCTestCase {
             {"kind":"relay", "display":"Relay https://relay.example", "selected":false},
             {"kind":"future", "display":"Future transport"},
             {"kind":"direct", "selected":true}
+          ],
+          "custom_relays": [
+            {"url":"https://relay.example/", "working":true, "error":null},
+            {"url":"https://relay.backup/", "working":false, "error":"connection refused"},
+            {"url":"https://relay.pending/", "working":null, "error":null}
           ]
         }
         """#.utf8)
 
-        let paths = TunnelSnapshotDecoder.connectionPaths(from: data)
+        let snapshot = TunnelSnapshotDecoder.connectionSnapshot(from: data)
+        let paths = snapshot.paths
 
         XCTAssertEqual(paths.count, 3)
         XCTAssertEqual(paths.map(\.kind), [.direct, .relay, .other])
@@ -73,10 +79,18 @@ final class TunnelSnapshotDecoderTests: XCTestCase {
             ["Direct 192.0.2.1:443", "Relay https://relay.example", "Future transport"]
         )
         XCTAssertEqual(paths.map(\.selected), [true, false, false])
+        XCTAssertEqual(snapshot.customRelays.map(\.url), [
+            "https://relay.example/", "https://relay.backup/", "https://relay.pending/"
+        ])
+        XCTAssertEqual(snapshot.customRelays.map(\.working), [true, false, nil])
+        XCTAssertEqual(snapshot.customRelays[1].error, "connection refused")
     }
 
     func testConnectionPathsReturnEmptyForMalformedReplies() {
-        XCTAssertEqual(TunnelSnapshotDecoder.connectionPaths(from: Data("{}".utf8)).count, 0)
-        XCTAssertEqual(TunnelSnapshotDecoder.connectionPaths(from: Data("bad".utf8)).count, 0)
+        for reply in ["{}", "bad"] {
+            let snapshot = TunnelSnapshotDecoder.connectionSnapshot(from: Data(reply.utf8))
+            XCTAssertTrue(snapshot.paths.isEmpty)
+            XCTAssertTrue(snapshot.customRelays.isEmpty)
+        }
     }
 }

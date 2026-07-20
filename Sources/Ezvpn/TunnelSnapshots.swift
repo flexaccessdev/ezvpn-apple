@@ -27,6 +27,19 @@ struct TunnelConnectionPath: Identifiable {
     let selected: Bool
 }
 
+struct TunnelCustomRelay: Identifiable {
+    let url: String
+    let working: Bool?
+    let error: String?
+
+    var id: String { url }
+}
+
+struct TunnelConnectionSnapshot {
+    let paths: [TunnelConnectionPath]
+    let customRelays: [TunnelCustomRelay]
+}
+
 /// Pure decoder for the app-message replies sent by PacketTunnelProvider.
 /// Keeping JSON interpretation out of `TunnelContainer` lets malformed and
 /// partial provider replies be tested without a live VPN session.
@@ -48,13 +61,13 @@ enum TunnelSnapshotDecoder {
         )
     }
 
-    static func connectionPaths(from data: Data) -> [TunnelConnectionPath] {
+    static func connectionSnapshot(from data: Data) -> TunnelConnectionSnapshot {
         guard
-            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let entries = object["paths"] as? [[String: Any]]
-        else { return [] }
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return TunnelConnectionSnapshot(paths: [], customRelays: []) }
 
-        return entries.compactMap { entry in
+        let paths: [TunnelConnectionPath] =
+            (object["paths"] as? [[String: Any]] ?? []).compactMap { entry in
             guard let display = entry["display"] as? String else { return nil }
             return TunnelConnectionPath(
                 kind: (entry["kind"] as? String).flatMap(TunnelConnectionPath.Kind.init) ?? .other,
@@ -62,5 +75,15 @@ enum TunnelSnapshotDecoder {
                 selected: entry["selected"] as? Bool ?? false
             )
         }
+        let relays: [TunnelCustomRelay] =
+            (object["custom_relays"] as? [[String: Any]] ?? []).compactMap { entry in
+            guard let url = entry["url"] as? String else { return nil }
+            return TunnelCustomRelay(
+                url: url,
+                working: entry["working"] as? Bool,
+                error: entry["error"] as? String
+            )
+        }
+        return TunnelConnectionSnapshot(paths: paths, customRelays: relays)
     }
 }
