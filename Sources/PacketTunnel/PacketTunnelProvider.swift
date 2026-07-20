@@ -98,6 +98,11 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             return
         }
         let relayURLs = conf["relay_urls"] as? [String] ?? []
+        // The optional shared relay token is a Keychain secret (like auth_token),
+        // not a providerConfiguration value. Load it only when custom relays are
+        // configured; a missing item is a normal "no token" result.
+        let relayAuthToken = Self.loadRelayAuthToken(
+            conf: conf, options: options, relayURLs: relayURLs, log: log)
         let routes = conf["routes"] as? [String] ?? []
         let routes6 = conf["routes6"] as? [String] ?? []
         #if os(iOS)
@@ -121,13 +126,18 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
 
         // Build the FFI config JSON. routes/routes6 are forwarded so the core can
         // compute which server underlay addresses overlap and must be excluded.
-        let configDict: [String: Any] = [
+        var configDict: [String: Any] = [
             "server_node_id": serverNodeID,
             "auth_token": authToken,
             "relay_urls": relayURLs,
             "routes": routes,
             "routes6": routes6,
         ]
+        // The relay token is only valid with custom relays; forward it only then
+        // (the core rejects a token supplied without relay URLs).
+        if let relayAuthToken, !relayAuthToken.isEmpty, !relayURLs.isEmpty {
+            configDict["relay_auth_token"] = relayAuthToken
+        }
         guard
             let configData = try? JSONSerialization.data(withJSONObject: configDict),
             let configStr = String(data: configData, encoding: .utf8)
@@ -480,6 +490,66 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     private static func error(_ message: String) -> NSError {
         NSError(domain: "ezvpn", code: 1,
                 userInfo: [NSLocalizedDescriptionKey: message])
+    }
+
+    /// Resolve the optional shared relay token for this connection, or nil.
+    ///
+    /// The token is a Keychain secret keyed by profile id under
+    /// `AuthTokenKeychain.relayService`, mirroring the per-server auth token:
+    /// - iOS reads it by profile identity (the extension runs in a user context
+    ///   with the shared access group; there is no second `passwordReference`).
+    /// - macOS's root daemon cannot read the data-protection keychain, so an
+    ///   app-initiated connect hands the token over in the start options and the
+    ///   provider persists it in the System keychain; an app-less restart reads
+    ///   that persisted copy. An app connect that carries no relay token clears
+    ///   any stale System-keychain copy so a removed token does not linger.
+    ///
+    /// Returns nil when no custom relays are configured (the default relays never
+    /// take a token) or when nothing is stored.
+    private static func loadRelayAuthToken(
+        conf: [String: Any],
+        options: [String: NSObject]?,
+        relayURLs: [String],
+        log: OSLog
+    ) -> String? {
+        guard
+            let idString = conf[ProviderConfigKey.profileID] as? String,
+            let profileID = UUID(uuidString: idString)
+        else { return nil }
+
+        #if os(macOS)
+        if !relayURLs.isEmpty,
+           let optionRelay = options?[TunnelStartOption.relayAuthToken] as? String,
+           !optionRelay.isEmpty {
+            do {
+                try AuthTokenKeychain.persistDaemonToken(
+                    optionRelay, for: profileID,
+                    service: AuthTokenKeychain.relayService)
+            } catch {
+                os_log(
+                    "could not persist relay token to the System keychain: %{public}@",
+                    log: log, type: .error, error.localizedDescription)
+            }
+            return optionRelay
+        }
+        if options?[TunnelStartOption.authToken] != nil {
+            // App-initiated connect that carried no relay token (including when
+            // relay URLs were cleared): drop any stale System-keychain copy so a
+            // removed token does not linger. Runs regardless of relayURLs.
+            try? AuthTokenKeychain.deleteDaemonToken(
+                for: profileID, service: AuthTokenKeychain.relayService)
+            return nil
+        }
+        // App-less restart (no start options): use the persisted copy, but only
+        // when custom relays are actually configured.
+        guard !relayURLs.isEmpty else { return nil }
+        return try? AuthTokenKeychain.daemonToken(
+            for: profileID, service: AuthTokenKeychain.relayService)
+        #else
+        guard !relayURLs.isEmpty else { return nil }
+        return try? AuthTokenKeychain.token(
+            forProfileID: profileID, service: AuthTokenKeychain.relayService)
+        #endif
     }
 
     /// Routes implied by the interface assignment itself. The server advertises

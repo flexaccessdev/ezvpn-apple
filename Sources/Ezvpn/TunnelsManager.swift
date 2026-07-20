@@ -115,7 +115,11 @@ final class TunnelsManager: ObservableObject {
     /// previously active one is restarted so adding a profile doesn't silently
     /// drop the user's connection.
     @discardableResult
-    func add(_ profile: TunnelProfile, authToken: String) async throws -> TunnelContainer {
+    func add(
+        _ profile: TunnelProfile,
+        authToken: String,
+        relayAuthToken: String?
+    ) async throws -> TunnelContainer {
         let name = try validatedName(profile.name, excluding: nil)
         var profile = profile
         profile.name = name
@@ -129,6 +133,25 @@ final class TunnelsManager: ObservableObject {
         } catch {
             throw TunnelsManagerError.system(error)
         }
+        // Store the optional relay token as a sibling secret. On failure, roll
+        // back the auth token just stored for this never-saved profile id.
+        do {
+            try storeRelayToken(relayAuthToken, for: profile.id)
+        } catch {
+            // The profile id is a fresh UUID no saved profile references, so a
+            // swallowed delete failure would leak the auth token forever —
+            // surface it instead, keeping the storage failure as the primary.
+            var rollbackErrors: [Error] = []
+            do {
+                try AuthTokenKeychain.delete(for: profile.id)
+            } catch let rollbackError {
+                rollbackErrors.append(rollbackError)
+            }
+            if rollbackErrors.isEmpty {
+                throw TunnelsManagerError.system(error)
+            }
+            throw compoundSystemError(primary: error, rollback: rollbackErrors)
+        }
 
         let manager = NETunnelProviderManager()
         manager.protocolConfiguration = makeProtocol(
@@ -139,13 +162,23 @@ final class TunnelsManager: ObservableObject {
             try await manager.saveToPreferences()
             try await manager.loadFromPreferences()
         } catch {
-            // Roll back the token stored for this never-saved profile. Its id is
-            // a fresh UUID no saved profile references, so a swallowed delete
+            // Roll back the token(s) stored for this never-saved profile. Its id
+            // is a fresh UUID no saved profile references, so a swallowed delete
             // failure would leak the Keychain item forever — surface it instead.
+            var rollbackErrors: [Error] = []
             do {
                 try AuthTokenKeychain.delete(for: profile.id)
             } catch let rollbackError {
-                throw compoundSystemError(primary: error, rollback: [rollbackError])
+                rollbackErrors.append(rollbackError)
+            }
+            do {
+                try AuthTokenKeychain.delete(
+                    for: profile.id, service: AuthTokenKeychain.relayService)
+            } catch let rollbackError {
+                rollbackErrors.append(rollbackError)
+            }
+            if !rollbackErrors.isEmpty {
+                throw compoundSystemError(primary: error, rollback: rollbackErrors)
             }
             throw TunnelsManagerError.system(error)
         }
@@ -169,7 +202,8 @@ final class TunnelsManager: ObservableObject {
     func modify(
         _ tunnel: TunnelContainer,
         to profile: TunnelProfile,
-        authToken: String
+        authToken: String,
+        relayAuthToken: String?
     ) async throws {
         let name = try validatedName(profile.name, excluding: tunnel)
         var profile = profile
@@ -186,12 +220,37 @@ final class TunnelsManager: ObservableObject {
         } catch {
             throw TunnelsManagerError.system(error)
         }
+        // The relay token is optional; a missing item reads back as nil.
+        let previousRelayToken = tunnel.relayAuthToken()
         let passwordReference: Data
         do {
             passwordReference = try AuthTokenKeychain.store(
                 authToken, for: profile.id)
         } catch {
             throw TunnelsManagerError.system(error)
+        }
+        do {
+            try storeRelayToken(relayAuthToken, for: profile.id)
+        } catch {
+            // Restore the auth token we just overwrote, then abort. Mirror the
+            // save-failure rollback below: restore the previous token if there
+            // was one, otherwise delete the token just stored, and surface any
+            // rollback failure instead of hiding it (the storage failure stays
+            // the primary).
+            var rollbackErrors: [Error] = []
+            do {
+                if let previousToken {
+                    _ = try AuthTokenKeychain.store(previousToken, for: profile.id)
+                } else {
+                    try AuthTokenKeychain.delete(for: profile.id)
+                }
+            } catch let rollbackError {
+                rollbackErrors.append(rollbackError)
+            }
+            if rollbackErrors.isEmpty {
+                throw TunnelsManagerError.system(error)
+            }
+            throw compoundSystemError(primary: error, rollback: rollbackErrors)
         }
 
         tunnel.manager.protocolConfiguration = makeProtocol(
@@ -212,6 +271,11 @@ final class TunnelsManager: ObservableObject {
                 } else {
                     try AuthTokenKeychain.delete(for: profile.id)
                 }
+            } catch let rollbackError {
+                rollbackErrors.append(rollbackError)
+            }
+            do {
+                try storeRelayToken(previousRelayToken, for: profile.id)
             } catch let rollbackError {
                 rollbackErrors.append(rollbackError)
             }
@@ -244,10 +308,35 @@ final class TunnelsManager: ObservableObject {
         }
         tunnels.removeAll { $0.id == tunnel.id }
         refreshMenuBarIconState()
+        var deleteErrors: [Error] = []
         do {
             try AuthTokenKeychain.delete(for: tunnel.id)
         } catch {
-            throw TunnelsManagerError.system(error)
+            deleteErrors.append(error)
+        }
+        do {
+            try AuthTokenKeychain.delete(
+                for: tunnel.id, service: AuthTokenKeychain.relayService)
+        } catch {
+            deleteErrors.append(error)
+        }
+        if let first = deleteErrors.first {
+            throw TunnelsManagerError.system(first)
+        }
+    }
+
+    /// Persist (or clear) the optional shared relay token for a profile. A nil or
+    /// empty token deletes any stored item, so removing a relay token in the
+    /// editor also removes the secret. The returned persistent reference is
+    /// unused: the relay token is resolved by profile identity, not a
+    /// `passwordReference` (there is only one of those per manager).
+    private func storeRelayToken(_ token: String?, for profileID: UUID) throws {
+        if let token, !token.isEmpty {
+            _ = try AuthTokenKeychain.store(
+                token, for: profileID, service: AuthTokenKeychain.relayService)
+        } else {
+            try AuthTokenKeychain.delete(
+                for: profileID, service: AuthTokenKeychain.relayService)
         }
     }
 

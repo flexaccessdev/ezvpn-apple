@@ -7,6 +7,7 @@ import Security
 /// auth token on macOS (see the daemon storage note in AuthTokenKeychain).
 enum TunnelStartOption {
     static let authToken = "ezvpn.auth-token"
+    static let relayAuthToken = "ezvpn.relay-auth-token"
 }
 
 struct AuthTokenKeychainClient {
@@ -47,19 +48,25 @@ struct AuthTokenKeychainClient {
 /// token in start options and the provider keeps a separate System-keychain
 /// copy for OS-initiated restarts.
 enum AuthTokenKeychain {
+    /// Keychain service for the per-server auth token (the required client
+    /// credential presented to the VPN server).
     static let service = "ezvpn.auth-token"
+    /// Keychain service for the optional shared relay bearer token. A distinct
+    /// service lets a single profile id hold both secrets side by side.
+    static let relayService = "ezvpn.relay-auth-token"
     static let accessGroupInfoKey = "EZVPNKeychainAccessGroup"
 
     static func store(
         _ token: String,
         for profileID: UUID,
+        service: String = AuthTokenKeychain.service,
         client: AuthTokenKeychainClient = .security
     ) throws -> Data {
         guard !token.isEmpty, let tokenData = token.data(using: .utf8) else {
             throw AuthTokenKeychainError.invalidToken
         }
 
-        var addQuery = try identityQuery(for: profileID)
+        var addQuery = try identityQuery(for: profileID, service: service)
         addQuery[kSecValueData as String] = tokenData
         addQuery[kSecAttrAccessible as String] =
             kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
@@ -79,12 +86,12 @@ enum AuthTokenKeychain {
                     kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
             ]
             let updateStatus = client.update(
-                try identityQuery(for: profileID), attributes)
+                try identityQuery(for: profileID, service: service), attributes)
             guard updateStatus == errSecSuccess else {
                 throw AuthTokenKeychainError.security(
                     operation: "update auth token", status: updateStatus)
             }
-            return try persistentReference(for: profileID, client: client)
+            return try persistentReference(for: profileID, service: service, client: client)
         default:
             throw AuthTokenKeychainError.security(
                 operation: "store auth token", status: addStatus)
@@ -119,9 +126,10 @@ enum AuthTokenKeychain {
     /// instead (see the daemon-side storage section below).
     static func token(
         forProfileID profileID: UUID,
+        service: String = AuthTokenKeychain.service,
         client: AuthTokenKeychainClient = .security
     ) throws -> String {
-        var query = try identityQuery(for: profileID)
+        var query = try identityQuery(for: profileID, service: service)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         return try decodeToken(client.copyMatching(query))
@@ -145,12 +153,13 @@ enum AuthTokenKeychain {
     static func persistDaemonToken(
         _ token: String,
         for profileID: UUID,
+        service: String = AuthTokenKeychain.service,
         client: AuthTokenKeychainClient = .security
     ) throws {
         guard !token.isEmpty, let tokenData = token.data(using: .utf8) else {
             throw AuthTokenKeychainError.invalidToken
         }
-        var addQuery = daemonIdentityQuery(for: profileID)
+        var addQuery = daemonIdentityQuery(for: profileID, service: service)
         addQuery[kSecValueData as String] = tokenData
 
         let (status, _) = client.add(addQuery)
@@ -159,7 +168,7 @@ enum AuthTokenKeychain {
             return
         case errSecDuplicateItem:
             let updateStatus = client.update(
-                daemonIdentityQuery(for: profileID),
+                daemonIdentityQuery(for: profileID, service: service),
                 [kSecValueData as String: tokenData])
             guard updateStatus == errSecSuccess else {
                 throw AuthTokenKeychainError.security(
@@ -173,15 +182,33 @@ enum AuthTokenKeychain {
 
     static func daemonToken(
         for profileID: UUID,
+        service: String = AuthTokenKeychain.service,
         client: AuthTokenKeychainClient = .security
     ) throws -> String {
-        var query = daemonIdentityQuery(for: profileID)
+        var query = daemonIdentityQuery(for: profileID, service: service)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         return try decodeToken(client.copyMatching(query))
     }
 
-    private static func daemonIdentityQuery(for profileID: UUID) -> [String: Any] {
+    /// macOS daemon-side delete against the System keychain (mirror of the
+    /// data-protection `delete(for:service:)`). Used to clear the optional relay
+    /// token when it is removed from a profile.
+    static func deleteDaemonToken(
+        for profileID: UUID,
+        service: String = AuthTokenKeychain.service,
+        client: AuthTokenKeychainClient = .security
+    ) throws {
+        let status = client.delete(daemonIdentityQuery(for: profileID, service: service))
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw AuthTokenKeychainError.security(
+                operation: "delete daemon auth token", status: status)
+        }
+    }
+
+    private static func daemonIdentityQuery(
+        for profileID: UUID, service: String
+    ) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -209,9 +236,10 @@ enum AuthTokenKeychain {
 
     static func delete(
         for profileID: UUID,
+        service: String = AuthTokenKeychain.service,
         client: AuthTokenKeychainClient = .security
     ) throws {
-        let status = client.delete(try identityQuery(for: profileID))
+        let status = client.delete(try identityQuery(for: profileID, service: service))
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw AuthTokenKeychainError.security(
                 operation: "delete auth token", status: status)
@@ -220,9 +248,10 @@ enum AuthTokenKeychain {
 
     private static func persistentReference(
         for profileID: UUID,
+        service: String,
         client: AuthTokenKeychainClient
     ) throws -> Data {
-        var query = try identityQuery(for: profileID)
+        var query = try identityQuery(for: profileID, service: service)
         query[kSecReturnPersistentRef as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
@@ -237,7 +266,9 @@ enum AuthTokenKeychain {
         return reference
     }
 
-    private static func identityQuery(for profileID: UUID) throws -> [String: Any] {
+    private static func identityQuery(
+        for profileID: UUID, service: String
+    ) throws -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

@@ -76,6 +76,15 @@ final class TunnelContainer: ObservableObject, Identifiable {
         #endif
     }
 
+    /// Load the profile's optional shared relay token from the Keychain, or nil
+    /// when none is stored. Unlike `authToken()` this is read by profile identity
+    /// on both platforms (there is no second `passwordReference` slot to carry
+    /// it), and a missing item is a normal "no token" result, not an error.
+    func relayAuthToken() -> String? {
+        try? AuthTokenKeychain.token(
+            forProfileID: id, service: AuthTokenKeychain.relayService)
+    }
+
     /// The profile's stable UUID, read from the manager's providerConfiguration.
     /// A Keychain credential reference is part of the required format.
     static func profileID(of manager: NETunnelProviderManager) -> UUID? {
@@ -155,10 +164,16 @@ final class TunnelContainer: ObservableObject, Identifiable {
         #if os(macOS)
         // The system extension (a root daemon) cannot read the user's
         // data-protection keychain, so every app-initiated connect hands it
-        // the token; the provider persists it in the System keychain for
+        // the token(s); the provider persists them in the System keychain for
         // system-initiated restarts. See AuthTokenKeychain.
         do {
-            options = [TunnelStartOption.authToken: try authToken() as NSString]
+            var startOptions: [String: NSObject] =
+                [TunnelStartOption.authToken: try authToken() as NSString]
+            // Optional; only handed over when the profile has a relay token.
+            if let relayToken = relayAuthToken() {
+                startOptions[TunnelStartOption.relayAuthToken] = relayToken as NSString
+            }
+            options = startOptions
         } catch {
             isAttemptingActivation = false
             lastError = "auth token unavailable: \(error.localizedDescription)"

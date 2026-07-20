@@ -139,6 +139,37 @@ final class AppModelTests: XCTestCase {
             try AuthTokenKeychain.token(forProfileID: id, client: client))
     }
 
+    func testRelayTokenCoexistsWithAuthTokenUnderSameProfile() throws {
+        let id = UUID()
+        let storage = InMemoryAuthTokenKeychain()
+        let client = storage.client
+        let relay = AuthTokenKeychain.relayService
+        defer {
+            try? AuthTokenKeychain.delete(for: id, client: client)
+            try? AuthTokenKeychain.delete(for: id, service: relay, client: client)
+        }
+
+        _ = try AuthTokenKeychain.store("auth-token", for: id, client: client)
+        _ = try AuthTokenKeychain.store(
+            "relay-token", for: id, service: relay, client: client)
+
+        // The two secrets are independent despite sharing the profile id.
+        XCTAssertEqual(
+            try AuthTokenKeychain.token(forProfileID: id, client: client),
+            "auth-token")
+        XCTAssertEqual(
+            try AuthTokenKeychain.token(forProfileID: id, service: relay, client: client),
+            "relay-token")
+
+        // Deleting the relay secret leaves the auth token intact.
+        try AuthTokenKeychain.delete(for: id, service: relay, client: client)
+        XCTAssertThrowsError(
+            try AuthTokenKeychain.token(forProfileID: id, service: relay, client: client))
+        XCTAssertEqual(
+            try AuthTokenKeychain.token(forProfileID: id, client: client),
+            "auth-token")
+    }
+
     func testAttachReplacesManagerButPreservesFallbackName() throws {
         let id = UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!
         let configuration = [ProviderConfigKey.profileID: id.uuidString]
@@ -176,7 +207,13 @@ private final class InMemoryAuthTokenKeychain {
         let persistentReference: Data
     }
 
+    // Keyed by (service, account) so a single profile id can hold both the
+    // auth-token and relay-token secrets at once, like the real Keychain.
     private var items: [String: Item] = [:]
+
+    private func storageKey(service: String?, account: String) -> String {
+        "\(service ?? AuthTokenKeychain.service)\u{0}\(account)"
+    }
 
     var client: AuthTokenKeychainClient {
         AuthTokenKeychainClient(
@@ -196,12 +233,13 @@ private final class InMemoryAuthTokenKeychain {
         else {
             return (errSecParam, nil)
         }
-        guard items[account] == nil else {
+        let key = storageKey(service: query[kSecAttrService as String] as? String, account: account)
+        guard items[key] == nil else {
             return (errSecDuplicateItem, nil)
         }
 
-        let reference = Data("persistent-ref:\(account)".utf8)
-        items[account] = Item(
+        let reference = Data("persistent-ref:\(key)".utf8)
+        items[key] = Item(
             tokenData: tokenData,
             persistentReference: reference
         )
@@ -214,14 +252,17 @@ private final class InMemoryAuthTokenKeychain {
     ) -> OSStatus {
         guard
             let account = query[kSecAttrAccount as String] as? String,
-            let tokenData = attributes[kSecValueData as String] as? Data,
-            var item = items[account]
+            let tokenData = attributes[kSecValueData as String] as? Data
         else {
+            return errSecItemNotFound
+        }
+        let key = storageKey(service: query[kSecAttrService as String] as? String, account: account)
+        guard var item = items[key] else {
             return errSecItemNotFound
         }
 
         item.tokenData = tokenData
-        items[account] = item
+        items[key] = item
         return errSecSuccess
     }
 
@@ -235,9 +276,9 @@ private final class InMemoryAuthTokenKeychain {
         if let account = query[kSecAttrAccount as String] as? String {
             let classMatches =
                 (query[kSecClass as String] as? String) == (kSecClassGenericPassword as String)
-            let serviceMatches =
-                (query[kSecAttrService as String] as? String) == AuthTokenKeychain.service
-            guard classMatches, serviceMatches, let item = items[account] else {
+            let key = storageKey(
+                service: query[kSecAttrService as String] as? String, account: account)
+            guard classMatches, let item = items[key] else {
                 return (errSecItemNotFound, nil)
             }
             if query[kSecReturnPersistentRef as String] as? Bool == true {
@@ -263,7 +304,8 @@ private final class InMemoryAuthTokenKeychain {
         guard let account = query[kSecAttrAccount as String] as? String else {
             return errSecParam
         }
-        return items.removeValue(forKey: account) == nil
+        let key = storageKey(service: query[kSecAttrService as String] as? String, account: account)
+        return items.removeValue(forKey: key) == nil
             ? errSecItemNotFound
             : errSecSuccess
     }
