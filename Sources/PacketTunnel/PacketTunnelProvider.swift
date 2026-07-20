@@ -125,7 +125,6 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             "server_node_id": serverNodeID,
             "auth_token": authToken,
             "relay_urls": relayURLs,
-            "relay_only": false,
             "routes": routes,
             "routes6": routes6,
         ]
