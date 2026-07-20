@@ -87,7 +87,10 @@ final class TunnelSnapshotDecoderTests: XCTestCase {
     }
 
     func testConnectionPathsReturnEmptyForMalformedReplies() {
-        XCTAssertTrue(TunnelSnapshotDecoder.connectionSnapshot(from: Data("{}".utf8)).paths.isEmpty)
-        XCTAssertTrue(TunnelSnapshotDecoder.connectionSnapshot(from: Data("bad".utf8)).paths.isEmpty)
+        for reply in ["{}", "bad"] {
+            let snapshot = TunnelSnapshotDecoder.connectionSnapshot(from: Data(reply.utf8))
+            XCTAssertTrue(snapshot.paths.isEmpty)
+            XCTAssertTrue(snapshot.customRelays.isEmpty)
+        }
     }
 }
