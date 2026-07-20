@@ -11,6 +11,7 @@ struct TunnelProfileForm: Equatable {
     var serverNodeID = ""
     var authToken = ""
     var relayURLs = ""
+    var relayAuthToken = ""
     var routes = ""
     var routes6 = ""
     var dnsServers = ""
@@ -18,11 +19,12 @@ struct TunnelProfileForm: Equatable {
 
     init() {}
 
-    init(profile: TunnelProfile, authToken: String) {
+    init(profile: TunnelProfile, authToken: String, relayAuthToken: String = "") {
         name = profile.name
         serverNodeID = profile.serverNodeID
         self.authToken = authToken
         relayURLs = profile.relayURLs.joined(separator: ", ")
+        self.relayAuthToken = relayAuthToken
         routes = profile.routes.joined(separator: ", ")
         routes6 = profile.routes6.joined(separator: ", ")
         dnsServers = profile.dnsServers.joined(separator: ", ")
@@ -57,18 +59,29 @@ struct TunnelProfileForm: Equatable {
             throw TunnelProfileFormError.invalidDNS(message)
         }
 
+        let relayURLList = Self.splitCSV(relayURLs)
+        let relayToken = Self.trimmed(relayAuthToken)
+        // The relay token is only valid with custom relays; reject it up front
+        // rather than letting the core fail the connection later.
+        if !relayToken.isEmpty, relayURLList.isEmpty {
+            throw TunnelProfileFormError.relayTokenWithoutRelays
+        }
+
         return TunnelProfileSubmission(
             profile: TunnelProfile(
                 id: id,
                 name: Self.trimmed(name),
                 serverNodeID: Self.trimmed(serverNodeID),
-                relayURLs: Self.splitCSV(relayURLs),
+                relayURLs: relayURLList,
                 routes: Self.splitCSV(routes),
                 routes6: Self.splitCSV(routes6),
                 dnsServers: dnsServerList,
                 dnsMatchDomains: dnsMatchDomainList
             ),
-            authToken: Self.trimmed(authToken)
+            authToken: Self.trimmed(authToken),
+            // Kept out of the profile: the relay token is a secret and is
+            // persisted in the Keychain, like `authToken`. nil == no token.
+            relayAuthToken: relayToken.isEmpty ? nil : relayToken
         )
     }
 
@@ -88,16 +101,21 @@ struct TunnelProfileForm: Equatable {
 struct TunnelProfileSubmission: Equatable {
     let profile: TunnelProfile
     let authToken: String
+    /// Optional shared relay bearer token, kept separate from the profile
+    /// because it is a secret (Keychain-stored). nil means no token.
+    let relayAuthToken: String?
 }
 
 enum TunnelProfileFormError: LocalizedError, Equatable {
     case missingRequiredFields
     case invalidDNS(String)
+    case relayTokenWithoutRelays
 
     var errorDescription: String? {
         switch self {
         case .missingRequiredFields: "Name, server node id, and auth token are required."
         case .invalidDNS(let message): message
+        case .relayTokenWithoutRelays: "A relay token requires at least one relay URL."
         }
     }
 }

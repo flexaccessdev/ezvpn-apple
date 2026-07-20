@@ -50,6 +50,13 @@ struct TunnelEditView: View {
                     TextField("", text: $form.relayURLs)
                         .fieldStyle()
                 }
+                LabeledField("Relay token", hint: "optional, custom relays only") {
+                    SecureField("", text: $form.relayAuthToken)
+                        .fieldStyle()
+                        .disabled(
+                            form.relayURLs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        )
+                }
             }
 
             Section {
@@ -125,7 +132,8 @@ struct TunnelEditView: View {
             }
             form = TunnelProfileForm(
                 profile: profile,
-                authToken: try tunnel.authToken()
+                authToken: try tunnel.authToken(),
+                relayAuthToken: tunnel.relayAuthToken() ?? ""
             )
         } catch {
             self.error = (error as? LocalizedError)?.errorDescription
@@ -157,13 +165,15 @@ struct TunnelEditView: View {
             case .add:
                 try await manager.add(
                     submission.profile,
-                    authToken: submission.authToken
+                    authToken: submission.authToken,
+                    relayAuthToken: submission.relayAuthToken
                 )
             case .edit(let tunnel):
                 try await manager.modify(
                     tunnel,
                     to: submission.profile,
-                    authToken: submission.authToken
+                    authToken: submission.authToken,
+                    relayAuthToken: submission.relayAuthToken
                 )
             }
             dismiss()

@@ -55,6 +55,10 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
 /// reads — do not rename them without updating
 /// `PacketTunnelProvider.startTunnel`. `profileID`/`name` are additive and
 /// ignored by the extension.
+///
+/// The relay auth token is intentionally NOT here: like the per-server auth
+/// token it is a secret and lives in the Keychain (see `AuthTokenKeychain`),
+/// keyed by profile id under `AuthTokenKeychain.relayService`.
 public enum ProviderConfigKey {
     public static let profileID = "profile_id"
     public static let name = "name"

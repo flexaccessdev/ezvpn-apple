@@ -40,6 +40,37 @@ final class TunnelProfileFormTests: XCTestCase {
         XCTAssertEqual(profile.dnsMatchDomains, [])
     }
 
+    func testMakeSubmissionCarriesRelayTokenWithCustomRelays() throws {
+        var form = requiredForm()
+        form.relayURLs = " https://relay.one "
+        form.relayAuthToken = "  shared-secret  "
+
+        let submission = try form.makeSubmission(id: UUID(), includesDNS: false)
+
+        XCTAssertEqual(submission.profile.relayURLs, ["https://relay.one"])
+        // The relay token is a secret kept out of the profile (Keychain-stored).
+        XCTAssertEqual(submission.relayAuthToken, "shared-secret")
+    }
+
+    func testMakeSubmissionDropsBlankRelayToken() throws {
+        var form = requiredForm()
+        form.relayURLs = "https://relay.one"
+        form.relayAuthToken = "   "
+
+        let submission = try form.makeSubmission(id: UUID(), includesDNS: false)
+
+        XCTAssertNil(submission.relayAuthToken)
+    }
+
+    func testMakeSubmissionRejectsRelayTokenWithoutRelays() {
+        var form = requiredForm()
+        form.relayAuthToken = "shared-secret"
+
+        XCTAssertThrowsError(try form.makeSubmission(id: UUID(), includesDNS: false)) { error in
+            XCTAssertEqual(error as? TunnelProfileFormError, .relayTokenWithoutRelays)
+        }
+    }
+
     func testMakeSubmissionNormalizesAndValidatesDNS() throws {
         var form = requiredForm()
         form.dnsServers = " 10.0.0.53, fd00::53 "
