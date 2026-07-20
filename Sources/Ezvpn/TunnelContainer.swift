@@ -223,9 +223,11 @@ final class TunnelContainer: ObservableObject, Identifiable {
 
     /// Snapshot how the running tunnel currently reaches the server (byte 1):
     /// all discovered iroh paths, empty while none are established.
-    func queryConnPaths() async -> [TunnelConnectionPath] {
-        guard let reply = await sendTunnelQuery(1) else { return [] }
-        return TunnelSnapshotDecoder.connectionPaths(from: reply)
+    func queryConnPaths() async -> TunnelConnectionSnapshot {
+        guard let reply = await sendTunnelQuery(1) else {
+            return TunnelConnectionSnapshot(paths: [], customRelays: [])
+        }
+        return TunnelSnapshotDecoder.connectionSnapshot(from: reply)
     }
 
     private func fetchLastDisconnectError() {

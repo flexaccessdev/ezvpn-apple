@@ -1,0 +1,70 @@
+name: Validate macOS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-macos:
+    name: Validate macOS
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Show build environment
+        run: |
+          uname -m
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Test TunnelCore
+        working-directory: Packages/TunnelCore
+        run: swift test
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Test app models on macOS
+        run: |
+          xcodebuild test \
+            -project Ezvpn.xcodeproj \
+            -scheme Ezvpn \
+            -configuration Debug \
+            -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData-Tests" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            -resultBundlePath "$RUNNER_TEMP/TestResults.xcresult" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM="" \
+            COMPILER_INDEX_STORE_ENABLE=NO
+
+      - name: Build macOS app and system extension (compile check)
+        run: |
+          xcodebuild build \
+            -project Ezvpn.xcodeproj \
+            -scheme Ezvpn \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -sdk macosx \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData-macOS" \
+            -clonedSourcePackagesDirPath "$RUNNER_TEMP/SourcePackages" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            DEVELOPMENT_TEAM="" \
+            COMPILER_INDEX_STORE_ENABLE=NO
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-test-results
+          path: ${{ runner.temp }}/TestResults.xcresult
+          if-no-files-found: warn

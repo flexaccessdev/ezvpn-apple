@@ -435,8 +435,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// App <-> extension query channel, using the WireGuard app's protocol:
     /// a single byte selects the query. Byte 0 means "get runtime
     /// configuration" (the applied network config as JSON); byte 1 means
-    /// "snapshot the live iroh connection path(s)" (the `ezvpn_conn_path`
-    /// JSON). The reply is nil when no tunnel is running.
+    /// "snapshot the live iroh connection path(s) and custom-relay health"
+    /// (the `ezvpn_conn_path` JSON). The reply is nil when no tunnel is running.
     override func handleAppMessage(
         _ messageData: Data,
         completionHandler: ((Data?) -> Void)? = nil
