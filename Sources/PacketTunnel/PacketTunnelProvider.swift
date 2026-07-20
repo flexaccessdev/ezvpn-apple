@@ -512,14 +512,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         relayURLs: [String],
         log: OSLog
     ) -> String? {
-        guard !relayURLs.isEmpty else { return nil }
         guard
             let idString = conf[ProviderConfigKey.profileID] as? String,
             let profileID = UUID(uuidString: idString)
         else { return nil }
 
         #if os(macOS)
-        if let optionRelay = options?[TunnelStartOption.relayAuthToken] as? String,
+        if !relayURLs.isEmpty,
+           let optionRelay = options?[TunnelStartOption.relayAuthToken] as? String,
            !optionRelay.isEmpty {
             do {
                 try AuthTokenKeychain.persistDaemonToken(
@@ -533,16 +533,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             return optionRelay
         }
         if options?[TunnelStartOption.authToken] != nil {
-            // App-initiated connect that carried no relay token: drop any stale
-            // System-keychain copy so a removed token does not linger.
+            // App-initiated connect that carried no relay token (including when
+            // relay URLs were cleared): drop any stale System-keychain copy so a
+            // removed token does not linger. Runs regardless of relayURLs.
             try? AuthTokenKeychain.deleteDaemonToken(
                 for: profileID, service: AuthTokenKeychain.relayService)
             return nil
         }
-        // App-less restart (no start options): use the persisted copy, if any.
+        // App-less restart (no start options): use the persisted copy, but only
+        // when custom relays are actually configured.
+        guard !relayURLs.isEmpty else { return nil }
         return try? AuthTokenKeychain.daemonToken(
             for: profileID, service: AuthTokenKeychain.relayService)
         #else
+        guard !relayURLs.isEmpty else { return nil }
         return try? AuthTokenKeychain.token(
             forProfileID: profileID, service: AuthTokenKeychain.relayService)
         #endif

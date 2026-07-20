@@ -55,6 +55,7 @@ struct TunnelEditView: View {
                         .fieldStyle()
                         .disabled(
                             form.relayURLs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                && form.relayAuthToken.isEmpty
                         )
                 }
             }

@@ -138,8 +138,19 @@ final class TunnelsManager: ObservableObject {
         do {
             try storeRelayToken(relayAuthToken, for: profile.id)
         } catch {
-            try? AuthTokenKeychain.delete(for: profile.id)
-            throw TunnelsManagerError.system(error)
+            // The profile id is a fresh UUID no saved profile references, so a
+            // swallowed delete failure would leak the auth token forever —
+            // surface it instead, keeping the storage failure as the primary.
+            var rollbackErrors: [Error] = []
+            do {
+                try AuthTokenKeychain.delete(for: profile.id)
+            } catch let rollbackError {
+                rollbackErrors.append(rollbackError)
+            }
+            if rollbackErrors.isEmpty {
+                throw TunnelsManagerError.system(error)
+            }
+            throw compoundSystemError(primary: error, rollback: rollbackErrors)
         }
 
         let manager = NETunnelProviderManager()
@@ -221,11 +232,25 @@ final class TunnelsManager: ObservableObject {
         do {
             try storeRelayToken(relayAuthToken, for: profile.id)
         } catch {
-            // Restore the auth token we just overwrote, then abort.
-            if let previousToken {
-                _ = try? AuthTokenKeychain.store(previousToken, for: profile.id)
+            // Restore the auth token we just overwrote, then abort. Mirror the
+            // save-failure rollback below: restore the previous token if there
+            // was one, otherwise delete the token just stored, and surface any
+            // rollback failure instead of hiding it (the storage failure stays
+            // the primary).
+            var rollbackErrors: [Error] = []
+            do {
+                if let previousToken {
+                    _ = try AuthTokenKeychain.store(previousToken, for: profile.id)
+                } else {
+                    try AuthTokenKeychain.delete(for: profile.id)
+                }
+            } catch let rollbackError {
+                rollbackErrors.append(rollbackError)
             }
-            throw TunnelsManagerError.system(error)
+            if rollbackErrors.isEmpty {
+                throw TunnelsManagerError.system(error)
+            }
+            throw compoundSystemError(primary: error, rollback: rollbackErrors)
         }
 
         tunnel.manager.protocolConfiguration = makeProtocol(
