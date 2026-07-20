@@ -1,6 +1,7 @@
 name: Validate iOS (Manual)
 
 on:
+  pull_request:
   workflow_dispatch:
 
 permissions:
