@@ -423,13 +423,21 @@ final class TunnelsManager: ObservableObject {
     /// previously active one back. If it's already fully down, start it now;
     /// otherwise mark it restarting so the status observer restarts it once it
     /// reaches `.disconnected`.
+    ///
+    /// macOS keeps each profile in an independent `NETunnelProviderManager`, so
+    /// saving a new one never knocks the active tunnel down — there is nothing
+    /// to restore. Marking it `isRestarting` there would strand it on a spurious
+    /// "Reconnecting…" forever, since no `.disconnected` notification ever
+    /// arrives to clear the flag.
     private func restoreAfterAddDeactivation(_ activeTunnel: TunnelContainer?) {
+        #if os(iOS)
         guard let activeTunnel else { return }
         if activeTunnel.manager.connection.status == .disconnected {
             Task { await activeTunnel.startActivation() }
         } else {
             activeTunnel.isRestarting = true
         }
+        #endif
     }
 
     private func makeProtocol(
