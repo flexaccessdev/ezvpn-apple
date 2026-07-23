@@ -33,6 +33,7 @@ extension View {
         autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .multilineTextAlignment(.leading)
+            .lineLimit(1)
         #else
         // In a grouped Form macOS reserves a label column for the TextField's
         // (empty) title and butts the control against it on the right, so short
@@ -46,6 +47,7 @@ extension View {
         autocorrectionDisabled()
             .labelsHidden()
             .multilineTextAlignment(.leading)
+            .lineLimit(1)
             .textFieldStyle(.roundedBorder)
         #endif
     }
