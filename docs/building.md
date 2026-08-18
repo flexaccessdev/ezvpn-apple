@@ -118,6 +118,12 @@ versions to the release version).
    accepts the handshake only for keys listed there. One key can serve any
    number of profiles.
 
+   > **Only the `ed25519-pub:` half leaves the device.** The `ed25519-sec:`
+   > value is the private key that proves this client's identity: never put it
+   > in `authorized_keys_file`, a config file, a ticket, or a chat message.
+   > Anyone holding it can authenticate as you. *Copy Secret Key…* exists only
+   > to move a key to another device you own — a server never needs it.
+
 5. **Add a profile** (tap `+`), fill in the details, Save, then toggle it on:
    - *Name* — a unique label for the profile (shown in the list and Settings > VPN).
    - *Server node id* — the `ezvpn` server's iroh endpoint id.

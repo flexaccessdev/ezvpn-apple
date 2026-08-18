@@ -1,3 +1,5 @@
+import Foundation
+import Security
 import XCTest
 @testable import ezvpn
 
@@ -79,6 +81,36 @@ final class AuthKeyStoreTests: XCTestCase {
         XCTAssertNil(store.delete(id: second.id))
         XCTAssertEqual(store.keys.map(\.id), [first.id])
         XCTAssertEqual(AuthKeyStore(client: client).keys.map(\.id), [first.id])
+    }
+
+    func testAddRollsBackWhenTheKeychainWriteFails() throws {
+        // A fresh install (reads find nothing) whose writes all fail.
+        let store = AuthKeyStore(client: AuthKeyKeychainClient(
+            add: { _ in (errSecIO, nil) },
+            update: { _, _ in errSecIO },
+            copyMatching: { _ in (errSecItemNotFound, nil) },
+            delete: { _ in errSecItemNotFound }))
+        let pair = try XCTUnwrap(AuthKey.generate())
+
+        // The key would vanish on relaunch, so it must not be listed as added.
+        XCTAssertNotNil(failure(store.add(name: "Laptop", secret: pair.secretKey)))
+        XCTAssertTrue(store.keys.isEmpty)
+    }
+
+    func testAListThatCouldNotBeReadIsNeverWrittenOver() throws {
+        // A read failure is not an empty list: the keys are still stored, so
+        // every write must be refused rather than replace them with nothing.
+        var writes = 0
+        let store = AuthKeyStore(client: AuthKeyKeychainClient(
+            add: { _ in writes += 1; return (errSecSuccess, Data()) },
+            update: { _, _ in writes += 1; return errSecSuccess },
+            copyMatching: { _ in (errSecInteractionNotAllowed, nil) },
+            delete: { _ in writes += 1; return errSecSuccess }))
+        let pair = try XCTUnwrap(AuthKey.generate())
+
+        XCTAssertNotNil(failure(store.add(name: "Laptop", secret: pair.secretKey)))
+        XCTAssertTrue(store.keys.isEmpty)
+        XCTAssertEqual(writes, 0)
     }
 
     private func unwrapSuccess(

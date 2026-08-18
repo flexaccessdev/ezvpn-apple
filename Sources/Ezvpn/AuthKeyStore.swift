@@ -1,5 +1,6 @@
 import Combine
 import Foundation
+import Security
 import TunnelCore
 
 /// The app's shared, named client auth keys — the same model the desktop and
@@ -41,27 +42,64 @@ final class AuthKeyStore: ObservableObject {
 
     private let client: AuthKeyKeychainClient
 
+    /// Why the stored list couldn't be read, or nil once it was (an absent
+    /// item counts: a fresh install genuinely has no keys). While this is set
+    /// the list on screen is not what's stored, so every write is refused —
+    /// persisting would replace the real list with this partial view.
+    private let loadError: ValidationError?
+
     init(client: AuthKeyKeychainClient = .security) {
         self.client = client
-        guard
-            let json = try? AuthKeyKeychain.secret(
+        switch Self.loadStored(client: client) {
+        case .success(let stored):
+            loadError = nil
+            // A record whose secret no longer derives a public key is corrupt —
+            // drop it rather than carry an entry that can never connect.
+            keys = stored.compactMap { record in
+                AuthKey.publicKey(forSecret: record.secret).map {
+                    Key(id: record.id, name: record.name, secret: record.secret, publicKey: $0)
+                }
+            }
+            // Make the pruning stick, so a corrupt record doesn't sit in the
+            // Keychain until the next add/rename/delete happens to rewrite it.
+            // Nothing to surface this early — a failed write just leaves it there.
+            if keys.count != stored.count { persist() }
+        case .failure(let error):
+            loadError = error
+        }
+    }
+
+    /// Read the persisted list. Only an absent Keychain item means "no keys
+    /// yet"; a Keychain failure or undecodable JSON is a load failure, which
+    /// must never pass as an empty list — the next write would then overwrite
+    /// every stored key with nothing.
+    private static func loadStored(
+        client: AuthKeyKeychainClient
+    ) -> Result<[StoredKey], ValidationError> {
+        let json: String
+        do {
+            json = try AuthKeyKeychain.secret(
                 account: AuthKeyKeychain.keyListAccount,
                 service: AuthKeyKeychain.keyListService,
-                client: client),
+                client: client)
+        } catch AuthKeyKeychainError.security(_, errSecItemNotFound) {
+            return .success([])
+        } catch {
+            let detail = (error as? LocalizedError)?.errorDescription
+                ?? error.localizedDescription
+            return .failure(.init(
+                message: "Couldn't read the key list from the Keychain: \(detail) "
+                    + "Keys can't be changed until it can be read."))
+        }
+        guard
             let data = json.data(using: .utf8),
             let stored = try? JSONDecoder().decode([StoredKey].self, from: data)
-        else { return }
-        // A record whose secret no longer derives a public key is corrupt —
-        // drop it rather than carry an entry that can never connect.
-        keys = stored.compactMap { record in
-            AuthKey.publicKey(forSecret: record.secret).map {
-                Key(id: record.id, name: record.name, secret: record.secret, publicKey: $0)
-            }
+        else {
+            return .failure(.init(
+                message: "The stored key list couldn't be decoded. "
+                    + "Keys can't be changed until it can be read."))
         }
-        // Make the pruning stick, so a corrupt record doesn't sit in the
-        // Keychain until the next add/rename/delete happens to rewrite it.
-        // Nothing to surface this early — a failed write just leaves it there.
-        if keys.count != stored.count { persist() }
+        return .success(stored)
     }
 
     func key(id: String) -> Key? {
@@ -152,6 +190,10 @@ final class AuthKeyStore: ObservableObject {
     /// at the next launch.
     @discardableResult
     private func persist() -> ValidationError? {
+        // Never write over a list that couldn't be read: what's in memory is a
+        // partial view of it, so add/rename/delete would destroy stored keys.
+        // Returning the load error rolls each of those back with the reason.
+        if let loadError { return loadError }
         let stored = keys.map { StoredKey(id: $0.id, name: $0.name, secret: $0.secret) }
         guard
             let data = try? JSONEncoder().encode(stored),
