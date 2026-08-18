@@ -10,12 +10,16 @@ enum EzvpnScene {
 @main
 struct Ezvpn: App {
     @StateObject private var manager = TunnelsManager()
+    /// The shared, named auth keys profiles authenticate with. App-wide (not
+    /// per profile), so it lives next to the tunnel manager.
+    @StateObject private var authKeys = AuthKeyStore()
 
     var body: some Scene {
         #if os(macOS)
         Window("ezvpn", id: EzvpnScene.mainWindowID) {
             TunnelListView()
                 .environmentObject(manager)
+                .environmentObject(authKeys)
                 .onAppear {
                     NSApplication.shared.setActivationPolicy(.regular)
                 }
@@ -37,6 +41,7 @@ struct Ezvpn: App {
         WindowGroup {
             TunnelListView()
                 .environmentObject(manager)
+                .environmentObject(authKeys)
         }
         #endif
     }

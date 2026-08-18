@@ -6,6 +6,7 @@ import NetworkExtension
 struct TunnelDetailView: View {
     @ObservedObject var tunnel: TunnelContainer
     @EnvironmentObject private var manager: TunnelsManager
+    @EnvironmentObject private var authKeys: AuthKeyStore
     @Environment(\.dismiss) private var dismiss
     @State private var showingEdit = false
     @State private var showingConnPath = false
@@ -110,7 +111,10 @@ struct TunnelDetailView: View {
         }
         #endif
         .sheet(isPresented: $showingEdit) {
-            NavigationStack { TunnelEditView(mode: .edit(tunnel)) }
+            NavigationStack {
+                TunnelEditView(mode: .edit(tunnel))
+                    .environmentObject(authKeys)
+            }
         }
         .sheet(isPresented: $showingConnPath) {
             ConnPathSheet { await tunnel.queryConnPaths() }

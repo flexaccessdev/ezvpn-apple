@@ -80,6 +80,7 @@ final class AppModelTests: XCTestCase {
             id: UUID(uuidString: "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE")!,
             name: "Configuration name is not authoritative",
             serverNodeID: "node-id",
+            authKeyID: "key-1",
             relayURLs: ["relay"],
             routes: ["10.0.0.0/8"],
             routes6: ["fd00::/8"],
@@ -99,6 +100,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(container.profile?.id, profile.id)
         XCTAssertEqual(container.profile?.name, "Localized Name")
         XCTAssertEqual(container.profile?.serverNodeID, "node-id")
+        XCTAssertEqual(container.profile?.authKeyID, "key-1")
         XCTAssertEqual(container.profile?.dnsMatchDomains, ["corp.example"])
     }
 
@@ -106,68 +108,68 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(TunnelContainer(manager: makeManager(configuration: [:])))
     }
 
-    func testAuthTokenKeychainRoundTripAndUpdate() throws {
+    func testAuthKeyKeychainRoundTripAndUpdate() throws {
         let id = UUID()
-        let storage = InMemoryAuthTokenKeychain()
+        let storage = InMemoryAuthKeyKeychain()
         let client = storage.client
-        defer { try? AuthTokenKeychain.delete(for: id, client: client) }
+        defer { try? AuthKeyKeychain.delete(for: id, client: client) }
 
-        let firstReference = try AuthTokenKeychain.store(
-            "first-token", for: id, client: client)
+        let firstReference = try AuthKeyKeychain.store(
+            "ed25519-sec:first", for: id, client: client)
         XCTAssertFalse(firstReference.isEmpty)
         XCTAssertEqual(
-            try AuthTokenKeychain.token(forProfileID: id, client: client),
-            "first-token"
+            try AuthKeyKeychain.secret(forProfileID: id, client: client),
+            "ed25519-sec:first"
         )
         #if os(iOS)
         XCTAssertEqual(
-            try AuthTokenKeychain.token(for: firstReference, client: client),
-            "first-token"
+            try AuthKeyKeychain.secret(for: firstReference, client: client),
+            "ed25519-sec:first"
         )
         #endif
 
-        let updatedReference = try AuthTokenKeychain.store(
-            "updated-token", for: id, client: client)
+        let updatedReference = try AuthKeyKeychain.store(
+            "ed25519-sec:updated", for: id, client: client)
         XCTAssertEqual(updatedReference, firstReference)
         XCTAssertEqual(
-            try AuthTokenKeychain.token(forProfileID: id, client: client),
-            "updated-token"
+            try AuthKeyKeychain.secret(forProfileID: id, client: client),
+            "ed25519-sec:updated"
         )
 
-        try AuthTokenKeychain.delete(for: id, client: client)
+        try AuthKeyKeychain.delete(for: id, client: client)
         XCTAssertThrowsError(
-            try AuthTokenKeychain.token(forProfileID: id, client: client))
+            try AuthKeyKeychain.secret(forProfileID: id, client: client))
     }
 
-    func testRelayTokenCoexistsWithAuthTokenUnderSameProfile() throws {
+    func testRelayTokenCoexistsWithAuthKeyUnderSameProfile() throws {
         let id = UUID()
-        let storage = InMemoryAuthTokenKeychain()
+        let storage = InMemoryAuthKeyKeychain()
         let client = storage.client
-        let relay = AuthTokenKeychain.relayService
+        let relay = AuthKeyKeychain.relayService
         defer {
-            try? AuthTokenKeychain.delete(for: id, client: client)
-            try? AuthTokenKeychain.delete(for: id, service: relay, client: client)
+            try? AuthKeyKeychain.delete(for: id, client: client)
+            try? AuthKeyKeychain.delete(for: id, service: relay, client: client)
         }
 
-        _ = try AuthTokenKeychain.store("auth-token", for: id, client: client)
-        _ = try AuthTokenKeychain.store(
+        _ = try AuthKeyKeychain.store("ed25519-sec:key", for: id, client: client)
+        _ = try AuthKeyKeychain.store(
             "relay-token", for: id, service: relay, client: client)
 
         // The two secrets are independent despite sharing the profile id.
         XCTAssertEqual(
-            try AuthTokenKeychain.token(forProfileID: id, client: client),
-            "auth-token")
+            try AuthKeyKeychain.secret(forProfileID: id, client: client),
+            "ed25519-sec:key")
         XCTAssertEqual(
-            try AuthTokenKeychain.token(forProfileID: id, service: relay, client: client),
+            try AuthKeyKeychain.secret(forProfileID: id, service: relay, client: client),
             "relay-token")
 
-        // Deleting the relay secret leaves the auth token intact.
-        try AuthTokenKeychain.delete(for: id, service: relay, client: client)
+        // Deleting the relay secret leaves the auth key intact.
+        try AuthKeyKeychain.delete(for: id, service: relay, client: client)
         XCTAssertThrowsError(
-            try AuthTokenKeychain.token(forProfileID: id, service: relay, client: client))
+            try AuthKeyKeychain.secret(forProfileID: id, service: relay, client: client))
         XCTAssertEqual(
-            try AuthTokenKeychain.token(forProfileID: id, client: client),
-            "auth-token")
+            try AuthKeyKeychain.secret(forProfileID: id, client: client),
+            "ed25519-sec:key")
     }
 
     func testAttachReplacesManagerButPreservesFallbackName() throws {
@@ -198,115 +200,5 @@ final class AppModelTests: XCTestCase {
         manager.localizedDescription = name
         manager.protocolConfiguration = proto
         return manager
-    }
-}
-
-private final class InMemoryAuthTokenKeychain {
-    private struct Item {
-        var tokenData: Data
-        let persistentReference: Data
-    }
-
-    // Keyed by (service, account) so a single profile id can hold both the
-    // auth-token and relay-token secrets at once, like the real Keychain.
-    private var items: [String: Item] = [:]
-
-    private func storageKey(service: String?, account: String) -> String {
-        "\(service ?? AuthTokenKeychain.service)\u{0}\(account)"
-    }
-
-    var client: AuthTokenKeychainClient {
-        AuthTokenKeychainClient(
-            add: { [unowned self] query in add(query) },
-            update: { [unowned self] query, attributes in
-                update(query, attributes: attributes)
-            },
-            copyMatching: { [unowned self] query in copyMatching(query) },
-            delete: { [unowned self] query in delete(query) }
-        )
-    }
-
-    private func add(_ query: [String: Any]) -> AuthTokenKeychainClient.Result {
-        guard
-            let account = query[kSecAttrAccount as String] as? String,
-            let tokenData = query[kSecValueData as String] as? Data
-        else {
-            return (errSecParam, nil)
-        }
-        let key = storageKey(service: query[kSecAttrService as String] as? String, account: account)
-        guard items[key] == nil else {
-            return (errSecDuplicateItem, nil)
-        }
-
-        let reference = Data("persistent-ref:\(key)".utf8)
-        items[key] = Item(
-            tokenData: tokenData,
-            persistentReference: reference
-        )
-        return (errSecSuccess, reference)
-    }
-
-    private func update(
-        _ query: [String: Any],
-        attributes: [String: Any]
-    ) -> OSStatus {
-        guard
-            let account = query[kSecAttrAccount as String] as? String,
-            let tokenData = attributes[kSecValueData as String] as? Data
-        else {
-            return errSecItemNotFound
-        }
-        let key = storageKey(service: query[kSecAttrService as String] as? String, account: account)
-        guard var item = items[key] else {
-            return errSecItemNotFound
-        }
-
-        item.tokenData = tokenData
-        items[key] = item
-        return errSecSuccess
-    }
-
-    private func copyMatching(
-        _ query: [String: Any]
-    ) -> AuthTokenKeychainClient.Result {
-        // Identity query (class + service + account): return the ref or the
-        // data, mirroring the real Keychain's kSecReturn* handling. A query
-        // with the right account but a mismatched service or class matches
-        // nothing.
-        if let account = query[kSecAttrAccount as String] as? String {
-            let classMatches =
-                (query[kSecClass as String] as? String) == (kSecClassGenericPassword as String)
-            let key = storageKey(
-                service: query[kSecAttrService as String] as? String, account: account)
-            guard classMatches, let item = items[key] else {
-                return (errSecItemNotFound, nil)
-            }
-            if query[kSecReturnPersistentRef as String] as? Bool == true {
-                return (errSecSuccess, item.persistentReference)
-            }
-            return (errSecSuccess, item.tokenData)
-        }
-
-        // Persistent-reference query (the iOS extension's path).
-        let reference = query[kSecValuePersistentRef as String] as? Data
-        guard
-            let reference,
-            let item = items.values.first(where: {
-                $0.persistentReference == reference
-            })
-        else {
-            return (errSecItemNotFound, nil)
-        }
-        return (errSecSuccess, item.tokenData)
-    }
-
-    private func delete(_ query: [String: Any]) -> OSStatus {
-        guard let account = query[kSecAttrAccount as String] as? String else {
-            return errSecParam
-        }
-        let key = storageKey(service: query[kSecAttrService as String] as? String, account: account)
-        return items.removeValue(forKey: key) == nil
-            ? errSecItemNotFound
-            : errSecSuccess
     }
 }

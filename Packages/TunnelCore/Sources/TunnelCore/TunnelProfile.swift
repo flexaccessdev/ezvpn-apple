@@ -16,6 +16,12 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
     /// Display name; also the manager's `localizedDescription`. Unique per app.
     public var name: String
     public var serverNodeID: String
+    /// Which key from the app's shared auth-key list this profile
+    /// authenticates with (`AuthKeyStore.Key.id`). The key's *secret* is never
+    /// here — it is copied into the profile's own Keychain item on save (see
+    /// `AuthKeyKeychain`); this is only the non-secret reference the editor
+    /// re-selects and the UI names the key by.
+    public var authKeyID: String
     public var relayURLs: [String]
     /// IPv4 private CIDRs to route through the tunnel (split tunnel).
     public var routes: [String]
@@ -32,6 +38,7 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
         id: UUID = UUID(),
         name: String,
         serverNodeID: String,
+        authKeyID: String,
         relayURLs: [String],
         routes: [String],
         routes6: [String],
@@ -41,6 +48,7 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
         self.id = id
         self.name = name
         self.serverNodeID = serverNodeID
+        self.authKeyID = authKeyID
         self.relayURLs = relayURLs
         self.routes = routes
         self.routes6 = routes6
@@ -53,16 +61,19 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
 /// dictionary. `serverNodeID`/`relayURLs`/`routes`/`routes6`/
 /// `dnsServers`/`dnsMatchDomains` are the keys the PacketTunnel extension
 /// reads — do not rename them without updating
-/// `PacketTunnelProvider.startTunnel`. `profileID`/`name` are additive and
-/// ignored by the extension.
+/// `PacketTunnelProvider.startTunnel`. `profileID`/`name`/`authKeyID` are
+/// additive and ignored by the extension.
 ///
-/// The relay auth token is intentionally NOT here: like the per-server auth
-/// token it is a secret and lives in the Keychain (see `AuthTokenKeychain`),
-/// keyed by profile id under `AuthTokenKeychain.relayService`.
+/// No secret is here: the client's ed25519 auth key and the optional relay
+/// bearer token live in the Keychain (see `AuthKeyKeychain`), keyed by profile
+/// id under `AuthKeyKeychain.service` and `AuthKeyKeychain.relayService`.
+/// `authKeyID` names which entry of the app's shared key list the secret came
+/// from, which is not itself sensitive.
 public enum ProviderConfigKey {
     public static let profileID = "profile_id"
     public static let name = "name"
     public static let serverNodeID = "server_node_id"
+    public static let authKeyID = "auth_key_id"
     public static let relayURLs = "relay_urls"
     public static let routes = "routes"
     public static let routes6 = "routes6"
@@ -79,6 +90,7 @@ public extension TunnelProfile {
             ProviderConfigKey.profileID: id.uuidString,
             ProviderConfigKey.name: name,
             ProviderConfigKey.serverNodeID: serverNodeID,
+            ProviderConfigKey.authKeyID: authKeyID,
             ProviderConfigKey.relayURLs: relayURLs,
             ProviderConfigKey.routes: routes,
             ProviderConfigKey.routes6: routes6,
@@ -100,6 +112,7 @@ public extension TunnelProfile {
             id: id,
             name: name,
             serverNodeID: conf[ProviderConfigKey.serverNodeID] as? String ?? "",
+            authKeyID: conf[ProviderConfigKey.authKeyID] as? String ?? "",
             relayURLs: conf[ProviderConfigKey.relayURLs] as? [String] ?? [],
             routes: conf[ProviderConfigKey.routes] as? [String] ?? [],
             routes6: conf[ProviderConfigKey.routes6] as? [String] ?? [],

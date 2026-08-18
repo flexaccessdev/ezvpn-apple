@@ -56,12 +56,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         }
 
         let serverNodeID = conf["server_node_id"] as? String ?? ""
-        let authToken: String
+        let authKey: String
         do {
             #if os(macOS)
             // The system extension is a root daemon: it cannot see the user's
-            // data-protection keychain, so the app hands the token over in the
-            // start options on every app-initiated connect, and the provider
+            // data-protection keychain, so the app hands the auth key over in
+            // the start options on every app-initiated connect, and the provider
             // persists it in the System keychain (the daemon keychain) so
             // system-initiated restarts can connect without the app.
             guard
@@ -71,34 +71,34 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 completionHandler(Self.error("missing profile_id in providerConfiguration"))
                 return
             }
-            if let optionToken = options?[TunnelStartOption.authToken] as? String,
-               !optionToken.isEmpty {
-                authToken = optionToken
+            if let optionKey = options?[TunnelStartOption.authKey] as? String,
+               !optionKey.isEmpty {
+                authKey = optionKey
                 do {
-                    try AuthTokenKeychain.persistDaemonToken(optionToken, for: profileID)
+                    try AuthKeyKeychain.persistDaemonSecret(optionKey, for: profileID)
                 } catch {
-                    // The in-hand token still works for this session; only
+                    // The in-hand key still works for this session; only
                     // app-less restarts are affected. Log and continue.
                     os_log(
-                        "could not persist auth token to the System keychain: %{public}@",
+                        "could not persist auth key to the System keychain: %{public}@",
                         log: log, type: .error, error.localizedDescription)
                 }
             } else {
-                authToken = try AuthTokenKeychain.daemonToken(for: profileID)
+                authKey = try AuthKeyKeychain.daemonSecret(for: profileID)
             }
             #else
             guard let passwordReference = proto.passwordReference else {
-                completionHandler(Self.error("missing auth-token Keychain reference"))
+                completionHandler(Self.error("missing auth-key Keychain reference"))
                 return
             }
-            authToken = try AuthTokenKeychain.token(for: passwordReference)
+            authKey = try AuthKeyKeychain.secret(for: passwordReference)
             #endif
         } catch {
-            completionHandler(Self.error("failed to load auth token: \(error.localizedDescription)"))
+            completionHandler(Self.error("failed to load auth key: \(error.localizedDescription)"))
             return
         }
         let relayURLs = conf["relay_urls"] as? [String] ?? []
-        // The optional shared relay token is a Keychain secret (like auth_token),
+        // The optional shared relay token is a Keychain secret (like auth_key),
         // not a providerConfiguration value. Load it only when custom relays are
         // configured; a missing item is a normal "no token" result.
         let relayAuthToken = Self.loadRelayAuthToken(
@@ -128,7 +128,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // compute which server underlay addresses overlap and must be excluded.
         var configDict: [String: Any] = [
             "server_node_id": serverNodeID,
-            "auth_token": authToken,
+            "auth_key": authKey,
             "relay_urls": relayURLs,
             "routes": routes,
             "routes6": routes6,
@@ -495,7 +495,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// Resolve the optional shared relay token for this connection, or nil.
     ///
     /// The token is a Keychain secret keyed by profile id under
-    /// `AuthTokenKeychain.relayService`, mirroring the per-server auth token:
+    /// `AuthKeyKeychain.relayService`, mirroring the per-profile auth key:
     /// - iOS reads it by profile identity (the extension runs in a user context
     ///   with the shared access group; there is no second `passwordReference`).
     /// - macOS's root daemon cannot read the data-protection keychain, so an
@@ -522,9 +522,9 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
            let optionRelay = options?[TunnelStartOption.relayAuthToken] as? String,
            !optionRelay.isEmpty {
             do {
-                try AuthTokenKeychain.persistDaemonToken(
+                try AuthKeyKeychain.persistDaemonSecret(
                     optionRelay, for: profileID,
-                    service: AuthTokenKeychain.relayService)
+                    service: AuthKeyKeychain.relayService)
             } catch {
                 os_log(
                     "could not persist relay token to the System keychain: %{public}@",
@@ -532,23 +532,23 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             }
             return optionRelay
         }
-        if options?[TunnelStartOption.authToken] != nil {
+        if options?[TunnelStartOption.authKey] != nil {
             // App-initiated connect that carried no relay token (including when
             // relay URLs were cleared): drop any stale System-keychain copy so a
             // removed token does not linger. Runs regardless of relayURLs.
-            try? AuthTokenKeychain.deleteDaemonToken(
-                for: profileID, service: AuthTokenKeychain.relayService)
+            try? AuthKeyKeychain.deleteDaemonSecret(
+                for: profileID, service: AuthKeyKeychain.relayService)
             return nil
         }
         // App-less restart (no start options): use the persisted copy, but only
         // when custom relays are actually configured.
         guard !relayURLs.isEmpty else { return nil }
-        return try? AuthTokenKeychain.daemonToken(
-            for: profileID, service: AuthTokenKeychain.relayService)
+        return try? AuthKeyKeychain.daemonSecret(
+            for: profileID, service: AuthKeyKeychain.relayService)
         #else
         guard !relayURLs.isEmpty else { return nil }
-        return try? AuthTokenKeychain.token(
-            forProfileID: profileID, service: AuthTokenKeychain.relayService)
+        return try? AuthKeyKeychain.secret(
+            forProfileID: profileID, service: AuthKeyKeychain.relayService)
         #endif
     }
 

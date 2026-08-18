@@ -59,30 +59,31 @@ final class TunnelContainer: ObservableObject, Identifiable {
         return TunnelProfile.from(providerConfiguration: conf, name: name)
     }
 
-    /// Load the profile's token from the Keychain only when the editor or a
-    /// rollback operation needs it. macOS reads by profile identity, iOS
-    /// through the persistent reference (see AuthTokenKeychain for why).
-    func authToken() throws -> String {
+    /// Load the profile's auth key (the ed25519 secret it authenticates with)
+    /// from the Keychain, only when a connect, the editor, or a rollback needs
+    /// it. macOS reads by profile identity, iOS through the persistent
+    /// reference (see AuthKeyKeychain for why).
+    func authKey() throws -> String {
         #if os(macOS)
-        return try AuthTokenKeychain.token(forProfileID: id)
+        return try AuthKeyKeychain.secret(forProfileID: id)
         #else
         guard
             let proto = manager.protocolConfiguration as? NETunnelProviderProtocol,
             let reference = proto.passwordReference
         else {
-            throw AuthTokenKeychainError.missingPersistentReference
+            throw AuthKeyKeychainError.missingPersistentReference
         }
-        return try AuthTokenKeychain.token(for: reference)
+        return try AuthKeyKeychain.secret(for: reference)
         #endif
     }
 
     /// Load the profile's optional shared relay token from the Keychain, or nil
-    /// when none is stored. Unlike `authToken()` this is read by profile identity
+    /// when none is stored. Unlike `authKey()` this is read by profile identity
     /// on both platforms (there is no second `passwordReference` slot to carry
     /// it), and a missing item is a normal "no token" result, not an error.
     func relayAuthToken() -> String? {
-        try? AuthTokenKeychain.token(
-            forProfileID: id, service: AuthTokenKeychain.relayService)
+        try? AuthKeyKeychain.secret(
+            forProfileID: id, service: AuthKeyKeychain.relayService)
     }
 
     /// The profile's stable UUID, read from the manager's providerConfiguration.
@@ -164,11 +165,11 @@ final class TunnelContainer: ObservableObject, Identifiable {
         #if os(macOS)
         // The system extension (a root daemon) cannot read the user's
         // data-protection keychain, so every app-initiated connect hands it
-        // the token(s); the provider persists them in the System keychain for
-        // system-initiated restarts. See AuthTokenKeychain.
+        // the secrets; the provider persists them in the System keychain for
+        // system-initiated restarts. See AuthKeyKeychain.
         do {
             var startOptions: [String: NSObject] =
-                [TunnelStartOption.authToken: try authToken() as NSString]
+                [TunnelStartOption.authKey: try authKey() as NSString]
             // Optional; only handed over when the profile has a relay token.
             if let relayToken = relayAuthToken() {
                 startOptions[TunnelStartOption.relayAuthToken] = relayToken as NSString
@@ -176,7 +177,7 @@ final class TunnelContainer: ObservableObject, Identifiable {
             options = startOptions
         } catch {
             isAttemptingActivation = false
-            lastError = "auth token unavailable: \(error.localizedDescription)"
+            lastError = "auth key unavailable: \(error.localizedDescription)"
             return
         }
         #else

@@ -12,12 +12,21 @@ struct TunnelEditView: View {
 
     let mode: Mode
     @EnvironmentObject private var manager: TunnelsManager
+    @EnvironmentObject private var authKeys: AuthKeyStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var form = TunnelProfileForm()
     @State private var error: String?
     @State private var saving = false
     @State private var didLoad = false
+    @State private var showingKeys = false
+    /// Set when the profile was saved with a key that has since been deleted
+    /// from the key list, so the picker comes up empty on purpose.
+    @State private var missingKeyNotice: String?
+
+    private var selectedKey: AuthKeyStore.Key? {
+        authKeys.key(id: form.authKeyID)
+    }
 
     private var isAdd: Bool {
         if case .add = mode { return true }
@@ -42,10 +51,31 @@ struct TunnelEditView: View {
                     TextField("", text: $form.serverNodeID)
                         .fieldStyle()
                 }
-                LabeledField("Auth token") {
-                    SecureField("", text: $form.authToken)
-                        .fieldStyle()
+                LabeledField("Auth key") {
+                    Picker("", selection: $form.authKeyID) {
+                        Text(authKeys.keys.isEmpty ? "No keys yet" : "Choose a key…")
+                            .tag("")
+                        ForEach(authKeys.keys) { key in
+                            Text(key.name).tag(key.id)
+                        }
+                    }
+                    .labelsHidden()
                 }
+                if let key = selectedKey {
+                    LabeledField("Public key", hint: "put this on the server") {
+                        Text(key.publicKey)
+                            .font(.footnote.monospaced())
+                            .textSelection(.enabled)
+                            .lineLimit(2)
+                            .truncationMode(.middle)
+                    }
+                }
+                if let missingKeyNotice {
+                    Text(missingKeyNotice)
+                        .font(.footnote)
+                        .foregroundStyle(.orange)
+                }
+                Button("Manage keys…") { showingKeys = true }
                 LabeledField("Relay URLs", hint: "comma-separated, optional") {
                     TextField("", text: $form.relayURLs)
                         .fieldStyle()
@@ -119,6 +149,12 @@ struct TunnelEditView: View {
                     .disabled(!canSave)
             }
         }
+        .sheet(isPresented: $showingKeys) {
+            NavigationStack {
+                KeysView()
+                    .environmentObject(authKeys)
+            }
+        }
         .onAppear(perform: loadIfNeeded)
     }
 
@@ -126,19 +162,22 @@ struct TunnelEditView: View {
         guard !didLoad else { return }
         didLoad = true
         guard case .edit(let tunnel) = mode else { return }
-        do {
-            guard let profile = tunnel.profile else {
-                error = "The saved VPN profile is malformed."
-                return
-            }
-            form = TunnelProfileForm(
-                profile: profile,
-                authToken: try tunnel.authToken(),
-                relayAuthToken: tunnel.relayAuthToken() ?? ""
-            )
-        } catch {
-            self.error = (error as? LocalizedError)?.errorDescription
-                ?? error.localizedDescription
+        guard let profile = tunnel.profile else {
+            error = "The saved VPN profile is malformed."
+            return
+        }
+        form = TunnelProfileForm(
+            profile: profile,
+            relayAuthToken: tunnel.relayAuthToken() ?? ""
+        )
+        // The profile keeps its own copy of the secret, so a key deleted from
+        // the list still connects — but there is nothing to preselect and
+        // nothing to re-save with, so say so instead of showing an empty picker
+        // with no explanation.
+        if !form.authKeyID.isEmpty, selectedKey == nil {
+            form.authKeyID = ""
+            missingKeyNotice = "The auth key this profile used is no longer in "
+                + "the key list. Pick a key before saving."
         }
     }
 
@@ -162,18 +201,26 @@ struct TunnelEditView: View {
             let submission = try form.makeSubmission(id: id, includesDNS: false)
             #endif
 
+            // The profile stores only the key's id; its secret is copied into
+            // the profile's Keychain item so the tunnel can read it without the
+            // key list.
+            guard let key = authKeys.key(id: submission.profile.authKeyID) else {
+                error = "Pick an auth key for this profile."
+                return
+            }
+
             switch mode {
             case .add:
                 try await manager.add(
                     submission.profile,
-                    authToken: submission.authToken,
+                    authKey: key.secret,
                     relayAuthToken: submission.relayAuthToken
                 )
             case .edit(let tunnel):
                 try await manager.modify(
                     tunnel,
                     to: submission.profile,
-                    authToken: submission.authToken,
+                    authKey: key.secret,
                     relayAuthToken: submission.relayAuthToken
                 )
             }

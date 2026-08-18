@@ -4,8 +4,10 @@ import SwiftUI
 /// to see its detail; toggle a row to connect/disconnect; `+` adds a profile.
 struct TunnelListView: View {
     @EnvironmentObject private var manager: TunnelsManager
+    @EnvironmentObject private var authKeys: AuthKeyStore
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingAdd = false
+    @State private var showingKeys = false
 
     var body: some View {
         NavigationStack {
@@ -32,6 +34,16 @@ struct TunnelListView: View {
                 }
             }
             .toolbar {
+                // The auth keys are shared across profiles, so they are managed
+                // from the root screen (and from the profile editor's picker),
+                // not per profile.
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showingKeys = true
+                    } label: {
+                        Label("Auth keys", systemImage: "key")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button {
                         showingAdd = true
@@ -41,7 +53,16 @@ struct TunnelListView: View {
                 }
             }
             .sheet(isPresented: $showingAdd) {
-                NavigationStack { TunnelEditView(mode: .add) }
+                NavigationStack {
+                    TunnelEditView(mode: .add)
+                        .environmentObject(authKeys)
+                }
+            }
+            .sheet(isPresented: $showingKeys) {
+                NavigationStack {
+                    KeysView()
+                        .environmentObject(authKeys)
+                }
             }
             .refreshable { await manager.reload() }
             .onChange(of: scenePhase) { _, phase in
