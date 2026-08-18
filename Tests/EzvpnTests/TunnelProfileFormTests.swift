@@ -9,10 +9,10 @@ final class TunnelProfileFormTests: XCTestCase {
 
         form.name = "  Home  "
         form.serverNodeID = "\nnode-id\t"
-        form.authToken = " token "
+        form.authKeyID = " key-1 "
         XCTAssertTrue(form.hasRequiredFields)
 
-        form.authToken = " \n\t "
+        form.authKeyID = " \n\t "
         XCTAssertFalse(form.hasRequiredFields)
     }
 
@@ -21,7 +21,7 @@ final class TunnelProfileFormTests: XCTestCase {
         var form = TunnelProfileForm()
         form.name = "  Office \n"
         form.serverNodeID = " node-id "
-        form.authToken = " token "
+        form.authKeyID = " key-1 "
         form.relayURLs = " https://relay.one , ,\nhttps://relay.two "
         form.routes = " 10.0.0.0/8,192.168.0.0/16 "
         form.routes6 = " fd00::/8, "
@@ -32,7 +32,7 @@ final class TunnelProfileFormTests: XCTestCase {
         XCTAssertEqual(profile.id, id)
         XCTAssertEqual(profile.name, "Office")
         XCTAssertEqual(profile.serverNodeID, "node-id")
-        XCTAssertEqual(submission.authToken, "token")
+        XCTAssertEqual(profile.authKeyID, "key-1")
         XCTAssertEqual(profile.relayURLs, ["https://relay.one", "https://relay.two"])
         XCTAssertEqual(profile.routes, ["10.0.0.0/8", "192.168.0.0/16"])
         XCTAssertEqual(profile.routes6, ["fd00::/8"])
@@ -100,7 +100,7 @@ final class TunnelProfileFormTests: XCTestCase {
 
     func testMakeSubmissionRejectsMissingRequiredFields() {
         var form = requiredForm()
-        form.authToken = "   "
+        form.authKeyID = "   "
 
         XCTAssertThrowsError(try form.makeSubmission(id: UUID(), includesDNS: true)) { error in
             XCTAssertEqual(error as? TunnelProfileFormError, .missingRequiredFields)
@@ -122,6 +122,7 @@ final class TunnelProfileFormTests: XCTestCase {
         let profile = TunnelProfile(
             name: "Home",
             serverNodeID: "node",
+            authKeyID: "key-1",
             relayURLs: ["relay-1", "relay-2"],
             routes: ["10.0.0.0/8"],
             routes6: ["fd00::/8"],
@@ -129,11 +130,11 @@ final class TunnelProfileFormTests: XCTestCase {
             dnsMatchDomains: ["corp.example"]
         )
 
-        let form = TunnelProfileForm(profile: profile, authToken: "secret")
+        let form = TunnelProfileForm(profile: profile)
 
         XCTAssertEqual(form.name, "Home")
         XCTAssertEqual(form.serverNodeID, "node")
-        XCTAssertEqual(form.authToken, "secret")
+        XCTAssertEqual(form.authKeyID, "key-1")
         XCTAssertEqual(form.relayURLs, "relay-1, relay-2")
         XCTAssertEqual(form.routes, "10.0.0.0/8")
         XCTAssertEqual(form.routes6, "fd00::/8")
@@ -145,7 +146,7 @@ final class TunnelProfileFormTests: XCTestCase {
         var form = TunnelProfileForm()
         form.name = "Home"
         form.serverNodeID = "node"
-        form.authToken = "token"
+        form.authKeyID = "key-1"
         return form
     }
 }

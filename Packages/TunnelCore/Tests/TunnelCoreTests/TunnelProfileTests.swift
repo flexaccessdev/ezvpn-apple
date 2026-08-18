@@ -5,6 +5,7 @@ final class TunnelProfileTests: XCTestCase {
     private func sample(
         id: UUID = UUID(),
         name: String = "Home",
+        authKeyID: String = "key-1",
         relayURLs: [String] = ["https://relay.example"],
         routes: [String] = ["10.0.0.0/8"],
         routes6: [String] = ["fd00::/64"],
@@ -14,6 +15,7 @@ final class TunnelProfileTests: XCTestCase {
         TunnelProfile(
             id: id, name: name,
             serverNodeID: "node-abc",
+            authKeyID: authKeyID,
             relayURLs: relayURLs, routes: routes, routes6: routes6,
             dnsServers: dnsServers, dnsMatchDomains: dnsMatchDomains
         )
@@ -23,6 +25,7 @@ final class TunnelProfileTests: XCTestCase {
         let conf = sample().providerConfiguration()
         // These keys are what PacketTunnelProvider.startTunnel reads.
         XCTAssertEqual(conf["server_node_id"] as? String, "node-abc")
+        XCTAssertEqual(conf["auth_key_id"] as? String, "key-1")
         XCTAssertEqual(conf["relay_urls"] as? [String], ["https://relay.example"])
         XCTAssertEqual(conf["routes"] as? [String], ["10.0.0.0/8"])
         XCTAssertEqual(conf["routes6"] as? [String], ["fd00::/64"])
@@ -59,7 +62,7 @@ final class TunnelProfileTests: XCTestCase {
     }
 
     func testEmptyArraysRoundTrip() {
-        let profile = sample(relayURLs: [], routes: [], routes6: [],
+        let profile = sample(authKeyID: "", relayURLs: [], routes: [], routes6: [],
                              dnsServers: [], dnsMatchDomains: [])
         let decoded = TunnelProfile.from(
             providerConfiguration: profile.providerConfiguration(), name: profile.name)
@@ -74,6 +77,7 @@ final class TunnelProfileTests: XCTestCase {
         let conf: [String: Any] = ["profile_id": UUID().uuidString]
         let decoded = TunnelProfile.from(providerConfiguration: conf, name: "Bare")
         XCTAssertEqual(decoded?.serverNodeID, "")
+        XCTAssertEqual(decoded?.authKeyID, "")
         XCTAssertEqual(decoded?.relayURLs, [])
         XCTAssertEqual(decoded?.routes, [])
         XCTAssertEqual(decoded?.routes6, [])

@@ -109,10 +109,19 @@ versions to the release version).
    > extension code (the run script re-runs `xcodegen generate` for you).
    > Inspect what is registered with `systemextensionsctl list`.
 
-4. **Add a profile** (tap `+`), fill in the details, Save, then toggle it on:
+4. **Add an auth key** (the *key* button on the profile list, or *Manage keys…*
+   in the profile editor): *Generate New Key…* mints an ed25519 keypair on this
+   device, *Enter Existing Key…* takes an `ed25519-sec:…` secret generated
+   elsewhere (another device's *Copy Secret Key…*, or
+   `flexaccess-keys generate-auth-key`). Copy the key's public half
+   (`ed25519-pub:…`) onto the server's `authorized_keys_file` — the server
+   accepts the handshake only for keys listed there. One key can serve any
+   number of profiles.
+
+5. **Add a profile** (tap `+`), fill in the details, Save, then toggle it on:
    - *Name* — a unique label for the profile (shown in the list and Settings > VPN).
    - *Server node id* — the `ezvpn` server's iroh endpoint id.
-   - *Auth token* — required; the token the server authenticates you with.
+   - *Auth key* — required; which key from the list authenticates this profile.
    - *Relay URLs* — optional hints; leave blank to use iroh defaults.
    - *IPv4 routes* — optional comma-separated CIDRs to tunnel.
    - *IPv6 routes* — optional comma-separated CIDRs to tunnel.

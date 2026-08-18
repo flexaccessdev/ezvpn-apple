@@ -117,7 +117,7 @@ final class TunnelsManager: ObservableObject {
     @discardableResult
     func add(
         _ profile: TunnelProfile,
-        authToken: String,
+        authKey: String,
         relayAuthToken: String?
     ) async throws -> TunnelContainer {
         let name = try validatedName(profile.name, excluding: nil)
@@ -128,22 +128,22 @@ final class TunnelsManager: ObservableObject {
 
         let passwordReference: Data
         do {
-            passwordReference = try AuthTokenKeychain.store(
-                authToken, for: profile.id)
+            passwordReference = try AuthKeyKeychain.store(
+                authKey, for: profile.id)
         } catch {
             throw TunnelsManagerError.system(error)
         }
         // Store the optional relay token as a sibling secret. On failure, roll
-        // back the auth token just stored for this never-saved profile id.
+        // back the auth key just stored for this never-saved profile id.
         do {
             try storeRelayToken(relayAuthToken, for: profile.id)
         } catch {
             // The profile id is a fresh UUID no saved profile references, so a
-            // swallowed delete failure would leak the auth token forever —
+            // swallowed delete failure would leak the auth key forever —
             // surface it instead, keeping the storage failure as the primary.
             var rollbackErrors: [Error] = []
             do {
-                try AuthTokenKeychain.delete(for: profile.id)
+                try AuthKeyKeychain.delete(for: profile.id)
             } catch let rollbackError {
                 rollbackErrors.append(rollbackError)
             }
@@ -162,18 +162,18 @@ final class TunnelsManager: ObservableObject {
             try await manager.saveToPreferences()
             try await manager.loadFromPreferences()
         } catch {
-            // Roll back the token(s) stored for this never-saved profile. Its id
+            // Roll back the secret(s) stored for this never-saved profile. Its id
             // is a fresh UUID no saved profile references, so a swallowed delete
             // failure would leak the Keychain item forever — surface it instead.
             var rollbackErrors: [Error] = []
             do {
-                try AuthTokenKeychain.delete(for: profile.id)
+                try AuthKeyKeychain.delete(for: profile.id)
             } catch let rollbackError {
                 rollbackErrors.append(rollbackError)
             }
             do {
-                try AuthTokenKeychain.delete(
-                    for: profile.id, service: AuthTokenKeychain.relayService)
+                try AuthKeyKeychain.delete(
+                    for: profile.id, service: AuthKeyKeychain.relayService)
             } catch let rollbackError {
                 rollbackErrors.append(rollbackError)
             }
@@ -202,21 +202,21 @@ final class TunnelsManager: ObservableObject {
     func modify(
         _ tunnel: TunnelContainer,
         to profile: TunnelProfile,
-        authToken: String,
+        authKey: String,
         relayAuthToken: String?
     ) async throws {
         let name = try validatedName(profile.name, excluding: tunnel)
         var profile = profile
         profile.name = name
 
-        // Read the existing token before any mutation so a rollback can restore
-        // it. A genuinely absent token (nothing to restore) is fine; a read
-        // failure must abort before we touch the Keychain or preferences.
-        let previousToken: String?
+        // Read the existing auth key before any mutation so a rollback can
+        // restore it. A genuinely absent key (nothing to restore) is fine; a
+        // read failure must abort before we touch the Keychain or preferences.
+        let previousKey: String?
         do {
-            previousToken = try tunnel.authToken()
-        } catch AuthTokenKeychainError.missingPersistentReference {
-            previousToken = nil
+            previousKey = try tunnel.authKey()
+        } catch AuthKeyKeychainError.missingPersistentReference {
+            previousKey = nil
         } catch {
             throw TunnelsManagerError.system(error)
         }
@@ -224,25 +224,25 @@ final class TunnelsManager: ObservableObject {
         let previousRelayToken = tunnel.relayAuthToken()
         let passwordReference: Data
         do {
-            passwordReference = try AuthTokenKeychain.store(
-                authToken, for: profile.id)
+            passwordReference = try AuthKeyKeychain.store(
+                authKey, for: profile.id)
         } catch {
             throw TunnelsManagerError.system(error)
         }
         do {
             try storeRelayToken(relayAuthToken, for: profile.id)
         } catch {
-            // Restore the auth token we just overwrote, then abort. Mirror the
-            // save-failure rollback below: restore the previous token if there
-            // was one, otherwise delete the token just stored, and surface any
+            // Restore the auth key we just overwrote, then abort. Mirror the
+            // save-failure rollback below: restore the previous key if there
+            // was one, otherwise delete the key just stored, and surface any
             // rollback failure instead of hiding it (the storage failure stays
             // the primary).
             var rollbackErrors: [Error] = []
             do {
-                if let previousToken {
-                    _ = try AuthTokenKeychain.store(previousToken, for: profile.id)
+                if let previousKey {
+                    _ = try AuthKeyKeychain.store(previousKey, for: profile.id)
                 } else {
-                    try AuthTokenKeychain.delete(for: profile.id)
+                    try AuthKeyKeychain.delete(for: profile.id)
                 }
             } catch let rollbackError {
                 rollbackErrors.append(rollbackError)
@@ -261,15 +261,15 @@ final class TunnelsManager: ObservableObject {
             try await tunnel.manager.saveToPreferences()
             try await tunnel.manager.loadFromPreferences()
         } catch {
-            // Best-effort rollback of both the Keychain token and the in-memory
+            // Best-effort rollback of both the Keychain secret and the in-memory
             // manager config; attempt both, but surface any rollback failure
             // instead of hiding it. The preference failure stays the primary.
             var rollbackErrors: [Error] = []
             do {
-                if let previousToken {
-                    _ = try AuthTokenKeychain.store(previousToken, for: profile.id)
+                if let previousKey {
+                    _ = try AuthKeyKeychain.store(previousKey, for: profile.id)
                 } else {
-                    try AuthTokenKeychain.delete(for: profile.id)
+                    try AuthKeyKeychain.delete(for: profile.id)
                 }
             } catch let rollbackError {
                 rollbackErrors.append(rollbackError)
@@ -310,13 +310,13 @@ final class TunnelsManager: ObservableObject {
         refreshMenuBarIconState()
         var deleteErrors: [Error] = []
         do {
-            try AuthTokenKeychain.delete(for: tunnel.id)
+            try AuthKeyKeychain.delete(for: tunnel.id)
         } catch {
             deleteErrors.append(error)
         }
         do {
-            try AuthTokenKeychain.delete(
-                for: tunnel.id, service: AuthTokenKeychain.relayService)
+            try AuthKeyKeychain.delete(
+                for: tunnel.id, service: AuthKeyKeychain.relayService)
         } catch {
             deleteErrors.append(error)
         }
@@ -332,11 +332,11 @@ final class TunnelsManager: ObservableObject {
     /// `passwordReference` (there is only one of those per manager).
     private func storeRelayToken(_ token: String?, for profileID: UUID) throws {
         if let token, !token.isEmpty {
-            _ = try AuthTokenKeychain.store(
-                token, for: profileID, service: AuthTokenKeychain.relayService)
+            _ = try AuthKeyKeychain.store(
+                token, for: profileID, service: AuthKeyKeychain.relayService)
         } else {
-            try AuthTokenKeychain.delete(
-                for: profileID, service: AuthTokenKeychain.relayService)
+            try AuthKeyKeychain.delete(
+                for: profileID, service: AuthKeyKeychain.relayService)
         }
     }
 

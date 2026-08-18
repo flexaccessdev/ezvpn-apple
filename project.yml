@@ -126,8 +126,8 @@ targetTemplates:
           - $(inherited)
           - -framework
           - CoreWLAN
-        MARKETING_VERSION: "0.0.36"
-        CURRENT_PROJECT_VERSION: "2"
+        MARKETING_VERSION: "0.0.40"
+        CURRENT_PROJECT_VERSION: "3"
     dependencies:
       - sdk: NetworkExtension.framework
       # Static-library XCFramework delivered via the sibling's Swift package
@@ -156,6 +156,24 @@ targets:
         KEYCHAIN_ACCESS_GROUP: "$(AppIdentifierPrefix)ezvpn.shared"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Sources/Ezvpn/Ezvpn.entitlements
+        # The app links libezvpn too (not just the tunnel targets): auth keys are
+        # generated and their public halves derived through the Rust FFI
+        # (ezvpn_generate_client_key / ezvpn_client_public_key), so the app never
+        # reimplements the flexaccess key format. Same bridging-header + system
+        # dependency setup as the PacketTunnelBase template above.
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Ezvpn/Bridging-Header.h
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -lresolv
+          - -lc++
+          - -framework
+          - Security
+          - -framework
+          - SystemConfiguration
+        "OTHER_LDFLAGS[sdk=macosx*]":
+          - $(inherited)
+          - -framework
+          - CoreWLAN
         # macOS entitlements vary by config: Debug (development signing) grants
         # the base networkextension value, Release (Developer ID) the
         # "-systemextension" variant. See the two Ezvpn.macOS[.debug].entitlements.
@@ -167,8 +185,8 @@ targets:
         "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Sources/Ezvpn/Info.plist
-        MARKETING_VERSION: "0.0.36"
-        CURRENT_PROJECT_VERSION: "2"
+        MARKETING_VERSION: "0.0.40"
+        CURRENT_PROJECT_VERSION: "3"
       configs:
         Debug:
           "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Sources/Ezvpn/Ezvpn.macOS.debug.entitlements
@@ -204,6 +222,10 @@ targets:
       # this package for the IP/CIDR primitives.
       - package: TunnelCore
         product: TunnelCore
+      # Auth-key generation/derivation goes through the same Rust FFI the tunnel
+      # uses (see SWIFT_OBJC_BRIDGING_HEADER above).
+      - package: Ezvpn
+        product: libezvpn
 
   EzvpnTests:
     type: bundle.unit-test
