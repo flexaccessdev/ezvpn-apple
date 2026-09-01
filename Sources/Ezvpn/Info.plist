@@ -20,6 +20,11 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- The ezvpn core (Rust xcframework) this build links, so the version
+	     footer can name it. Set from project.yml, which scripts/bump-xcframework.sh
+	     keeps in step with the release pinned in Packages/Ezvpn/Package.swift. -->
+	<key>EzvpnCoreVersion</key>
+	<string>$(EZVPN_CORE_VERSION)</string>
 	<key>EZVPNKeychainAccessGroup</key>
 	<string>$(KEYCHAIN_ACCESS_GROUP)</string>
 	<key>LSApplicationCategoryType</key>

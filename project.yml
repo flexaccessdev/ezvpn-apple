@@ -126,7 +126,7 @@ targetTemplates:
           - $(inherited)
           - -framework
           - CoreWLAN
-        MARKETING_VERSION: "0.0.44"
+        MARKETING_VERSION: "0.0.2"
         CURRENT_PROJECT_VERSION: "3"
     dependencies:
       - sdk: NetworkExtension.framework
@@ -185,8 +185,15 @@ targets:
         "ENABLE_HARDENED_RUNTIME[sdk=macosx*]": YES
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Sources/Ezvpn/Info.plist
-        MARKETING_VERSION: "0.0.44"
+        # The app's own version, independent of the core release it links.
+        MARKETING_VERSION: "0.0.2"
         CURRENT_PROJECT_VERSION: "3"
+        # The pinned libezvpn release, surfaced in the app's version footer
+        # (Info.plist -> EzvpnCoreVersion). scripts/bump-xcframework.sh rewrites
+        # this alongside the url+checksum in Package.swift, so the two cannot
+        # drift; a local FFI build (EZVPN_LOCAL_XCFRAMEWORK) still shows the
+        # pinned number, since the local artifact carries none.
+        EZVPN_CORE_VERSION: "0.0.44"
       configs:
         Debug:
           "CODE_SIGN_ENTITLEMENTS[sdk=macosx*]": Sources/Ezvpn/Ezvpn.macOS.debug.entitlements
