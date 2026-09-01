@@ -20,8 +20,9 @@ The Rust core is delivered as `libezvpn.xcframework` via a local Swift package
 (`Packages/Ezvpn`). Its binary target **downloads the pinned release zip by
 URL+checksum** by default — no local Rust build required. Bump to a newer
 `ezvpn` release with `scripts/bump-xcframework.sh <tag>` (rewrites the URL and
-checksum in `Packages/Ezvpn/Package.swift` and sets the app/extension marketing
-versions to the release version).
+checksum in `Packages/Ezvpn/Package.swift` and the `EZVPN_CORE_VERSION` shown in
+the app's version footer). The app's own `MARKETING_VERSION` is independent of
+the core release; bump it by hand.
 
 1. **Generate the Xcode project** (SPM fetches the pinned xcframework):
 

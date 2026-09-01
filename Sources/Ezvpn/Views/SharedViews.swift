@@ -63,16 +63,32 @@ extension View {
     }
 }
 
-/// App version pulled from the bundle: "vMARKETING (BUILD)" — e.g. "v0.0.30 (12)".
-/// `CFBundleShortVersionString` is the marketing version, `CFBundleVersion` the
-/// build number; both come from project.yml (MARKETING_VERSION / CURRENT_PROJECT_VERSION).
+/// What this build is, read from the bundle Info.plist: the app's own version
+/// ("vMARKETING (BUILD)", from project.yml MARKETING_VERSION /
+/// CURRENT_PROJECT_VERSION) and the ezvpn core it links (EzvpnCoreVersion, the
+/// release pinned in Packages/Ezvpn/Package.swift and kept in step by
+/// scripts/bump-xcframework.sh). The two move independently: a core bump does
+/// not change the app version, and vice versa.
 enum AppVersion {
-    static var displayString: String {
+    /// e.g. "v0.0.2 (3)".
+    static var app: String {
         let info = Bundle.main.infoDictionary
         let marketing = info?["CFBundleShortVersionString"] as? String ?? "—"
         let build = info?["CFBundleVersion"] as? String ?? "—"
         return "v\(marketing) (\(build))"
     }
+
+    /// The pinned libezvpn release, e.g. "0.0.44". A local FFI build
+    /// (EZVPN_LOCAL_XCFRAMEWORK) still reports the pinned number — the locally
+    /// built artifact carries no version of its own.
+    static var core: String {
+        let value = Bundle.main.infoDictionary?["EzvpnCoreVersion"] as? String
+        let trimmed = value?.trimmingCharacters(in: .whitespaces) ?? ""
+        return trimmed.isEmpty ? "—" : trimmed
+    }
+
+    /// The single line both numbers share, e.g. "v0.0.2 (3) · core 0.0.44".
+    static var displayString: String { "\(app) · core \(core)" }
 }
 
 /// Version label anchored at the bottom of the home screen. Tertiary caption so
@@ -84,7 +100,7 @@ struct VersionFooter: View {
             .foregroundStyle(.tertiary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 6)
-            .accessibilityLabel(Text("App version \(AppVersion.displayString)"))
+            .accessibilityLabel(Text("App version \(AppVersion.app), ezvpn core \(AppVersion.core)"))
     }
 }
 
