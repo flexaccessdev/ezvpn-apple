@@ -17,7 +17,7 @@ on:
       ezvpn_ref:
         description: "ezvpn git ref (commit SHA / branch / tag) to build against"
         required: true
-        default: "ee4f4294f073ba09fc7fef541ef8f17517e74a46"
+        default: "9410b3ecca8153060d696a9af1f7bf17e3e13ebb"
       ezvpn_repo:
         description: "ezvpn repository (owner/name)"
         required: true
