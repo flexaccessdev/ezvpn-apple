@@ -126,8 +126,8 @@ targetTemplates:
           - $(inherited)
           - -framework
           - CoreWLAN
-        MARKETING_VERSION: "0.0.2"
-        CURRENT_PROJECT_VERSION: "3"
+        MARKETING_VERSION: "0.0.3"
+        CURRENT_PROJECT_VERSION: "4"
     dependencies:
       - sdk: NetworkExtension.framework
       # Static-library XCFramework delivered via the sibling's Swift package
@@ -186,8 +186,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Sources/Ezvpn/Info.plist
         # The app's own version, independent of the core release it links.
-        MARKETING_VERSION: "0.0.2"
-        CURRENT_PROJECT_VERSION: "3"
+        MARKETING_VERSION: "0.0.3"
+        CURRENT_PROJECT_VERSION: "4"
         # The pinned libezvpn release, surfaced in the app's version footer
         # (Info.plist -> EzvpnCoreVersion). scripts/bump-xcframework.sh rewrites
         # this alongside the url+checksum in Package.swift, so the two cannot
