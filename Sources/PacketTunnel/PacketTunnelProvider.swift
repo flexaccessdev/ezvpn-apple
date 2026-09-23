@@ -41,6 +41,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// monitor's initial callback; a later mismatch is a network change.
     private var networkPathKey: String?
 
+    /// The inputs of the last `connectAndStart`, kept so a `RECONFIGURE`
+    /// event (the server handed back different network settings on an
+    /// in-place reconnect) can connect afresh and re-apply them without the
+    /// app. Accessed on `workQueue` only.
+    private var lastStart: StartParams?
+
+    private struct StartParams {
+        let configStr: String
+        let routes: [String]
+        let routes6: [String]
+        let dnsServers: [String]
+        let dnsMatchDomains: [String]
+    }
+
     override func startTunnel(
         options: [String: NSObject]?,
         completionHandler: @escaping (Error?) -> Void
@@ -151,23 +165,25 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         // provider's calling queue: blocking that queue would also block delivery
         // of stopTunnel, so cancelling a connect to an offline server would hang
         // at "disconnecting" until the OS kills the process.
+        let params = StartParams(configStr: configStr, routes: routes, routes6: routes6,
+                                 dnsServers: dnsServers, dnsMatchDomains: dnsMatchDomains)
+        workQueue.async { self.lastStart = params }
         DispatchQueue.global(qos: .userInitiated).async {
-            self.connectAndStart(configStr: configStr, routes: routes, routes6: routes6,
-                                 dnsServers: dnsServers, dnsMatchDomains: dnsMatchDomains,
-                                 completionHandler: completionHandler)
+            self.connectAndStart(params, completionHandler: completionHandler)
         }
     }
 
     /// The blocking half of `startTunnel`: connect + handshake via the Rust
     /// core, then apply tunnel settings. Runs on a background queue.
     private func connectAndStart(
-        configStr: String,
-        routes: [String],
-        routes6: [String],
-        dnsServers: [String],
-        dnsMatchDomains: [String],
+        _ params: StartParams,
         completionHandler: @escaping (Error?) -> Void
     ) {
+        let configStr = params.configStr
+        let routes = params.routes
+        let routes6 = params.routes6
+        let dnsServers = params.dnsServers
+        let dnsMatchDomains = params.dnsMatchDomains
         // ezvpn_connect: connect + handshake. Result/error JSON lands in `buf`.
         var buf = [CChar](repeating: 0, count: 4096)
         let handle = configStr.withCString { cstr in
@@ -352,7 +368,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                     return
                 }
 
-                let rc = ezvpn_run(handle, fd)
+                // The library reconnects a lost session in place and reports
+                // progress through handleTunnelEvent. `self` outlives the
+                // handle: the provider lives as long as the extension process,
+                // and no event is delivered after ezvpn_stop.
+                let rc = ezvpn_run(handle, fd, Self.tunnelEventCallback,
+                                   Unmanaged.passUnretained(self).toOpaque())
                 if rc != 0 {
                     ezvpn_stop(handle)
                     self.handle = nil
@@ -361,8 +382,79 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 }
                 os_log("tunnel running on fd %d", log: self.log, type: .info, fd)
                 self.runtimeConfig = runtime
-                self.startNetworkMonitor()
+                if let monitor = self.networkMonitor {
+                    // A reconnect (reconnectAfresh) keeps the monitor, but
+                    // handlePathUpdate drops updates while the handle is being
+                    // replaced; catch a network change that happened meanwhile.
+                    let key = Self.pathKey(monitor.currentPath)
+                    if let baseline = self.networkPathKey, key != baseline {
+                        os_log("network changed during reconnect (%{public}@ -> %{public}@)",
+                               log: self.log, type: .info, baseline, key)
+                        monitor.cancel()
+                        self.networkMonitor = nil
+                        completionHandler(Self.error("network changed, disconnected"))
+                        return
+                    }
+                } else {
+                    self.startNetworkMonitor()
+                }
                 completionHandler(nil)
+            }
+        }
+    }
+
+    /// C trampoline for `ezvpn_run` events; runs on a library thread.
+    private static let tunnelEventCallback: ezvpn_event_cb = { ctx, event, message in
+        guard let ctx else { return }
+        let provider = Unmanaged<PacketTunnelProvider>.fromOpaque(ctx).takeUnretainedValue()
+        let text = message.map { String(cString: $0) }
+        provider.workQueue.async { provider.handleTunnelEvent(event, message: text) }
+    }
+
+    /// React to the Rust loop's progress (runs on `workQueue`). A lost session
+    /// is retried by the library; the OS shows it as reasserting meanwhile.
+    private func handleTunnelEvent(_ event: Int32, message: String?) {
+        guard handle != nil, !stopRequested else { return }
+        switch event {
+        case EZVPN_EVENT_RECONNECTING:
+            os_log("session lost, reconnecting: %{public}@", log: log, type: .info,
+                   message ?? "")
+            reasserting = true
+        case EZVPN_EVENT_RECONNECTED:
+            os_log("session reconnected", log: log, type: .info)
+            reasserting = false
+        case EZVPN_EVENT_RECONFIGURE:
+            os_log("server changed network settings, reconnecting afresh: %{public}@",
+                   log: log, type: .info, message ?? "")
+            reconnectAfresh()
+        default:
+            os_log("tunnel ended: %{public}@", log: log, type: .error,
+                   message ?? "closed")
+            cancelTunnelWithError(Self.error(message ?? "The tunnel was closed."))
+        }
+    }
+
+    /// Replace the session after a `RECONFIGURE`: stop the old handle, then run
+    /// the start path again, which re-applies the new network settings to the
+    /// same tunnel. Runs on `workQueue`.
+    private func reconnectAfresh() {
+        guard let handle, let params = lastStart else { return }
+        reasserting = true
+        ezvpn_stop(handle)
+        self.handle = nil
+        runtimeConfig = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            self.connectAndStart(params) { [weak self] error in
+                guard let self else { return }
+                self.workQueue.async {
+                    if let error {
+                        os_log("reconnect failed: %{public}@", log: self.log, type: .error,
+                               error.localizedDescription)
+                        self.cancelTunnelWithError(error)
+                    } else {
+                        self.reasserting = false
+                    }
+                }
             }
         }
     }
@@ -431,6 +523,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             networkMonitor?.cancel()
             networkMonitor = nil
             networkPathKey = nil
+            lastStart = nil
             if let handle {
                 ezvpn_stop(handle)
                 self.handle = nil
