@@ -382,7 +382,20 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 }
                 os_log("tunnel running on fd %d", log: self.log, type: .info, fd)
                 self.runtimeConfig = runtime
-                if self.networkMonitor == nil {
+                if let monitor = self.networkMonitor {
+                    // A reconnect (reconnectAfresh) keeps the monitor, but
+                    // handlePathUpdate drops updates while the handle is being
+                    // replaced; catch a network change that happened meanwhile.
+                    let key = Self.pathKey(monitor.currentPath)
+                    if let baseline = self.networkPathKey, key != baseline {
+                        os_log("network changed during reconnect (%{public}@ -> %{public}@)",
+                               log: self.log, type: .info, baseline, key)
+                        monitor.cancel()
+                        self.networkMonitor = nil
+                        completionHandler(Self.error("network changed, disconnected"))
+                        return
+                    }
+                } else {
                     self.startNetworkMonitor()
                 }
                 completionHandler(nil)
