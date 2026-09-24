@@ -1,4 +1,5 @@
 import SwiftUI
+import TunnelCore
 
 /// Root screen: the list of saved VPN profiles (WireGuard-app style). Tap a row
 /// to see its detail; toggle a row to connect/disconnect; `+` adds a profile.
@@ -73,6 +74,9 @@ struct TunnelListView: View {
                 SystemExtensionBanner(state: manager.systemExtensionState)
             }
             #endif
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ExtensionVersionBanner(check: manager.runningExtensionCheck)
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VersionFooter()
             }
@@ -89,6 +93,78 @@ struct TunnelListView: View {
     }
 }
 
+/// Warns when the connected tunnel runs an extension build other than this
+/// app's — the system has not replaced the old extension yet, so the tunnel
+/// still has the old code. Renders nothing on a match or with no tunnel up.
+private struct ExtensionVersionBanner: View {
+    @EnvironmentObject private var manager: TunnelsManager
+    let check: ExtensionVersionCheck?
+
+    var body: some View {
+        if case .mismatch(let running) = check {
+            NoticeBanner(
+                icon: "exclamationmark.arrow.triangle.2.circlepath",
+                tint: .orange,
+                message: ExtensionVersionBanner.message(running: running),
+                actionTitle: actionTitle,
+                action: action)
+        }
+    }
+
+    static func message(running: BundleVersion?) -> String {
+        let runningText = running.map { "is \($0)" } ?? "is older"
+        #if os(macOS)
+        let remedy = "Update the extension; if this persists, restart your Mac."
+        #else
+        let remedy = "Disconnect, then quit and reopen ezvpn."
+        #endif
+        return "The running tunnel extension \(runningText), but this app is "
+            + "\(AppVersion.appNumber). \(remedy)"
+    }
+
+    #if os(macOS)
+    private var actionTitle: String? { "Update extension" }
+    private var action: (() -> Void)? { { manager.reactivateSystemExtension() } }
+    #else
+    private var actionTitle: String? { nil }
+    private var action: (() -> Void)? { nil }
+    #endif
+}
+
+/// A full-width tinted notice with an optional link-style action, shown at the
+/// top of the profile list.
+struct NoticeBanner: View {
+    let icon: String
+    let tint: Color
+    let message: String
+    let actionTitle: String?
+    let action: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 10) {
+            Image(systemName: icon)
+                .foregroundStyle(tint)
+            Text(message)
+                .font(.callout)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if let actionTitle, let action {
+                #if os(macOS)
+                Button(actionTitle, action: action)
+                    .buttonStyle(.link)
+                #else
+                Button(actionTitle, action: action)
+                    .buttonStyle(.borderless)
+                #endif
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(tint.opacity(0.12))
+    }
+}
+
 #if os(macOS)
 import AppKit
 
@@ -102,7 +178,7 @@ private struct SystemExtensionBanner: View {
     var body: some View {
         switch state {
         case .needsApproval:
-            banner(
+            NoticeBanner(
                 icon: "exclamationmark.shield.fill",
                 tint: .orange,
                 message: "Allow the ezvpn network extension in System Settings "
@@ -110,7 +186,7 @@ private struct SystemExtensionBanner: View {
                 actionTitle: "Open System Settings",
                 action: openSystemSettings)
         case .failed(let detail):
-            banner(
+            NoticeBanner(
                 icon: "xmark.octagon.fill",
                 tint: .red,
                 message: "Couldn't install the network extension: \(detail)",
@@ -119,32 +195,6 @@ private struct SystemExtensionBanner: View {
         case .idle, .activating, .active:
             EmptyView()
         }
-    }
-
-    @ViewBuilder
-    private func banner(
-        icon: String,
-        tint: Color,
-        message: String,
-        actionTitle: String?,
-        action: (() -> Void)?
-    ) -> some View {
-        HStack(alignment: .center, spacing: 10) {
-            Image(systemName: icon)
-                .foregroundStyle(tint)
-            Text(message)
-                .font(.callout)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
-            if let actionTitle, let action {
-                Button(actionTitle, action: action)
-                    .buttonStyle(.link)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(tint.opacity(0.12))
     }
 
     private func openSystemSettings() {

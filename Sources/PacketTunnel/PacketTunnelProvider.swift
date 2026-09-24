@@ -538,7 +538,10 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// a single byte selects the query. Byte 0 means "get runtime
     /// configuration" (the applied network config as JSON); byte 1 means
     /// "snapshot the live iroh connection path(s) and custom-relay health"
-    /// (the `ezvpn_conn_path` JSON). The reply is nil when no tunnel is running.
+    /// (the `ezvpn_conn_path` JSON); byte 2 means "which build is this
+    /// process" (this extension's `BundleVersion`, so the app can spot a stale
+    /// extension the system has not replaced yet). Bytes 0 and 1 reply nil when
+    /// no tunnel is running; byte 2 always answers.
     override func handleAppMessage(
         _ messageData: Data,
         completionHandler: ((Data?) -> Void)? = nil
@@ -573,6 +576,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 }
                 completionHandler(Data(String(cString: buf).utf8))
             }
+        case 2:
+            completionHandler(BundleVersion(infoDictionary: Bundle.main.infoDictionary)?.jsonData)
         default:
             completionHandler(nil)
         }

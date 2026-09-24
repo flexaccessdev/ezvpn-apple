@@ -71,11 +71,15 @@ extension View {
 /// not change the app version, and vice versa.
 enum AppVersion {
     /// e.g. "v0.0.2 (3)".
-    static var app: String {
+    static var app: String { "v\(appNumber)" }
+
+    /// e.g. "0.0.2 (3)", the form `BundleVersion` prints, so it lines up with
+    /// the running extension's version in the mismatch banner.
+    static var appNumber: String {
         let info = Bundle.main.infoDictionary
         let marketing = info?["CFBundleShortVersionString"] as? String ?? "—"
         let build = info?["CFBundleVersion"] as? String ?? "—"
-        return "v\(marketing) (\(build))"
+        return "\(marketing) (\(build))"
     }
 
     /// The pinned libezvpn release, e.g. "0.0.44". A local FFI build

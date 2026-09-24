@@ -246,6 +246,22 @@ final class TunnelContainer: ObservableObject, Identifiable {
         return TunnelSnapshotDecoder.connectionSnapshot(from: reply)
     }
 
+    /// Ask the running tunnel process which build it is (byte 2) and compare
+    /// it with this app. nil when the tunnel is not connected. An extension
+    /// that predates the query answers nothing, so an empty reply counts as a
+    /// mismatch; it is retried once first so a dropped message is not
+    /// mistaken for a stale extension.
+    func checkExtensionVersion(expected: BundleVersion) async -> ExtensionVersionCheck? {
+        guard status == .connected else { return nil }
+        var reply = await sendTunnelQuery(2)
+        if reply == nil {
+            try? await Task.sleep(for: .seconds(1))
+            guard status == .connected else { return nil }
+            reply = await sendTunnelQuery(2)
+        }
+        return checkRunningExtension(expected: expected, reply: reply)
+    }
+
     private func fetchLastDisconnectError() {
         guard let session = manager.connection as? NETunnelProviderSession else { return }
         session.fetchLastDisconnectError { [weak self] error in
