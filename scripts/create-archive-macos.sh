@@ -39,11 +39,6 @@ Options:
   -o, --export-path PATH      Output directory for the exported .app.
                               Defaults to ./build/export-macos.
   -d, --dmg-path PATH         Output .dmg. Defaults to ./build/${APP_NAME}-<version>.dmg.
-      --app-version VERSION   Stamp this version (CFBundleShortVersionString) on
-                              the app and its extension, overriding project.yml.
-      --build-number N        Stamp this build number (CFBundleVersion). sysextd
-                              only replaces an installed system extension whose
-                              version differs, so releases pass an increasing one.
 
 Notarization credentials (required for method=developer-id unless --skip-notarize).
 Use ONE of:
@@ -78,7 +73,6 @@ to Xcode.
 
 Environment overrides:
   TEAM_ID, CONFIGURATION, METHOD, ARCHIVE_PATH, EXPORT_PATH, DMG_PATH,
-  APP_VERSION, BUILD_NUMBER,
   NOTARY_PROFILE, NOTARY_KEY, NOTARY_KEY_ID, NOTARY_ISSUER
 USAGE
 }
@@ -94,8 +88,6 @@ METHOD="${METHOD:-developer-id}"
 ARCHIVE_PATH="${ARCHIVE_PATH:-$PROJECT_ROOT/build/${APP_NAME}-macos.xcarchive}"
 EXPORT_PATH="${EXPORT_PATH:-$PROJECT_ROOT/build/export-macos}"
 DMG_PATH="${DMG_PATH:-}"
-APP_VERSION="${APP_VERSION:-}"
-BUILD_NUMBER="${BUILD_NUMBER:-}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-}"
 NOTARY_KEY="${NOTARY_KEY:-}"
 NOTARY_KEY_ID="${NOTARY_KEY_ID:-}"
@@ -110,8 +102,6 @@ while [[ $# -gt 0 ]]; do
     -a|--archive-path)   [[ $# -ge 2 ]] || die "$1 requires a value"; ARCHIVE_PATH="$2"; shift 2 ;;
     -o|--export-path)    [[ $# -ge 2 ]] || die "$1 requires a value"; EXPORT_PATH="$2"; shift 2 ;;
     -d|--dmg-path)       [[ $# -ge 2 ]] || die "$1 requires a value"; DMG_PATH="$2"; shift 2 ;;
-    --app-version)       [[ $# -ge 2 ]] || die "$1 requires a value"; APP_VERSION="$2"; shift 2 ;;
-    --build-number)      [[ $# -ge 2 ]] || die "$1 requires a value"; BUILD_NUMBER="$2"; shift 2 ;;
     --notary-profile)    [[ $# -ge 2 ]] || die "$1 requires a value"; NOTARY_PROFILE="$2"; shift 2 ;;
     --key)               [[ $# -ge 2 ]] || die "$1 requires a value"; NOTARY_KEY="$2"; shift 2 ;;
     --key-id)            [[ $# -ge 2 ]] || die "$1 requires a value"; NOTARY_KEY_ID="$2"; shift 2 ;;
@@ -205,11 +195,6 @@ if [[ "$METHOD" == "developer-id" ]]; then
   [[ -n "$SIGN_IDENTITY" ]] || die "no 'Developer ID Application' certificate for team $TEAM_ID in the keychain — create one in Xcode › Settings › Accounts › Manage Certificates"
 fi
 
-# Optional version stamp, applied to every target (app and extension alike).
-VERSION_ARGS=()
-[[ -z "$APP_VERSION" ]] || VERSION_ARGS+=("MARKETING_VERSION=$APP_VERSION")
-[[ -z "$BUILD_NUMBER" ]] || VERSION_ARGS+=("CURRENT_PROJECT_VERSION=$BUILD_NUMBER")
-
 /bin/mkdir -p "$(/usr/bin/dirname "$ARCHIVE_PATH")"
 
 # Guard against a mistyped or externally-pointed output path (these are
@@ -255,7 +240,6 @@ xcodebuild archive \
   -archivePath "$ARCHIVE_PATH" \
   -allowProvisioningUpdates \
   ${PROFILE_AUTH_ARGS[@]+"${PROFILE_AUTH_ARGS[@]}"} \
-  ${VERSION_ARGS[@]+"${VERSION_ARGS[@]}"} \
   DEVELOPMENT_TEAM="$TEAM_ID"
 
 /bin/mkdir -p "$EXPORT_PATH"

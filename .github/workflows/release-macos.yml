@@ -1,10 +1,12 @@
 name: Release macOS DMG (Manual)
 
 # Builds a Developer-ID-signed, notarized, stapled drag-to-Applications .dmg and
-# attaches it to a published GitHub prerelease. Each run stamps the next app
-# version: the last macos-v* tag (or project.yml's MARKETING_VERSION, whichever
-# is higher) with its patch number incremented, and the run number as the build
-# number, so every release replaces the installed system extension. Manual only — never runs on
+# attaches it to a published GitHub release. Like the sibling repos, the tag and
+# title come from the version declared in project.yml (MARKETING_VERSION /
+# CURRENT_PROJECT_VERSION), a run aborts if that tag already exists — so every
+# release needs a version bump — and it is a real release on main, a prerelease
+# from any other branch. A unique version per release matters beyond naming:
+# sysextd does not replace an installed system extension with an identical one. Manual only — never runs on
 # push/PR, so the signing identity and API key in secrets are never exposed to
 # untrusted code.
 on:
@@ -24,7 +26,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.tag.outputs.release_tag }}
-      app_version: ${{ steps.tag.outputs.app_version }}
+      release_title: ${{ steps.tag.outputs.release_title }}
+      is_prerelease: ${{ steps.tag.outputs.is_prerelease }}
     steps:
       - uses: actions/checkout@v7
 
@@ -34,23 +37,29 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Next version: the higher of the last released macos-v* version and
-          # project.yml's MARKETING_VERSION, patch + 1. The concurrency group
-          # below serializes runs, so two runs never mint the same version.
-          last="$(git ls-remote --tags --refs origin 'refs/tags/macos-v*' \
-            | sed 's#.*refs/tags/macos-v##' | sort -V | tail -1)"
-          declared="$(sed -nE 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*"?([0-9.]+)"?.*/\1/p' project.yml | sort -V | tail -1)"
-          base="$(printf '%s\n' "$last" "$declared" | sed '/^$/d' | sort -V | tail -1)"
-          [[ "$base" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || {
-            echo "::error::cannot derive a version from '$base'"
+          # Tag and title come from the version declared in project.yml, which
+          # every target (app, extensions, iOS and macOS) must share. Whether it
+          # is a prerelease depends only on the branch (anything but main).
+          versions="$(sed -nE 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*"?([0-9.]+)"?.*/\1/p' project.yml | sort -u)"
+          builds="$(sed -nE 's/^[[:space:]]*CURRENT_PROJECT_VERSION:[[:space:]]*"?([0-9]+)"?.*/\1/p' project.yml | sort -u)"
+          [[ -n "$versions" && "$(wc -l <<<"$versions")" -eq 1 ]] || {
+            echo "::error::project.yml must declare exactly one MARKETING_VERSION across targets (found: $(echo $versions))"
             exit 1
           }
-          version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
-          echo "app_version=$version" >> "$GITHUB_OUTPUT"
-          # macos- prefix keeps these releases distinct from the iOS workflow's.
-          echo "release_tag=macos-v${version}" >> "$GITHUB_OUTPUT"
+          [[ -n "$builds" && "$(wc -l <<<"$builds")" -eq 1 ]] || {
+            echo "::error::project.yml must declare exactly one CURRENT_PROJECT_VERSION across targets (found: $(echo $builds))"
+            exit 1
+          }
+          version="$versions"
           core="$(sed -nE 's/^[[:space:]]*EZVPN_CORE_VERSION:[[:space:]]*"?([0-9.]+)"?.*/\1/p' project.yml | head -1)"
-          echo "release_title=Prerelease macOS v${version} (core ${core})" >> "$GITHUB_OUTPUT"
+          echo "release_tag=v$version" >> "$GITHUB_OUTPUT"
+          if [ "${{ github.ref }}" != "refs/heads/main" ]; then
+            echo "release_title=Prerelease macOS v$version ($builds, core $core)" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_title=Release macOS v$version ($builds, core $core)" >> "$GITHUB_OUTPUT"
+            echo "is_prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Abort if tag already exists
         run: |
@@ -68,10 +77,19 @@ jobs:
             echo "Deleting stale draft release ${{ steps.tag.outputs.release_tag }}"
             gh release delete "${{ steps.tag.outputs.release_tag }}" --yes
           fi
-
+          args=()
+          if [ "${{ steps.tag.outputs.is_prerelease }}" = "true" ]; then
+            args+=(--prerelease)
+          else
+            # Generate notes against the previous *stable* release, not the latest prerelease.
+            prev_stable=$(gh release list --exclude-pre-releases --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // empty')
+            if [ -n "$prev_stable" ]; then
+              args+=(--notes-start-tag "$prev_stable")
+            fi
+          fi
           gh release create "${{ steps.tag.outputs.release_tag }}" \
             --draft \
-            --prerelease \
+            "${args[@]}" \
             --target "${{ github.sha }}" \
             --title "${{ steps.tag.outputs.release_title }}" \
             --generate-notes
@@ -164,8 +182,6 @@ jobs:
         env:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
-          APP_VERSION: ${{ needs.setup.outputs.app_version }}
-          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
           # Team + bundle prefix are read from Developer.local.xcconfig written
@@ -173,9 +189,7 @@ jobs:
           scripts/create-archive-macos.sh \
             --key "$RUNNER_TEMP/keys/AuthKey.p8" \
             --key-id "$ASC_API_KEY_ID" \
-            --issuer "$ASC_API_ISSUER_ID" \
-            --app-version "$APP_VERSION" \
-            --build-number "$BUILD_NUMBER"
+            --issuer "$ASC_API_ISSUER_ID"
 
       - name: Locate the DMG
         id: dmg

@@ -96,9 +96,9 @@ download, **no Apple Developer account required to use it**: download the `.dmg`
 drag **ezvpn** to Applications, launch it, and approve the network extension once
 in System Settings.
 
-Each release carries its own version (`macos-v<version>`, shown in the app's
-footer next to the core version), and installing it replaces the previous app
-and network extension.
+Each release carries its own version (`v<version>`, shown in the app's footer
+next to the core version), and installing it replaces the previous app and
+network extension.
 
 The DMG is produced by the **Release macOS DMG (Manual)** workflow
 (`.github/workflows/release-macos.yml`), which publishes it as a GitHub
