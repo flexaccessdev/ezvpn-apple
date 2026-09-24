@@ -2,6 +2,7 @@
 import AppKit
 import NetworkExtension
 import SwiftUI
+import TunnelCore
 
 /// Native macOS menu-bar controls for opening the app and toggling profiles
 /// without keeping the main window visible.
@@ -22,6 +23,14 @@ struct MenuBarView: View {
 
         if let notice = systemExtensionNotice {
             Text(notice)
+            Divider()
+        }
+
+        if case .mismatch = manager.runningExtensionCheck {
+            Text("⚠ The running tunnel extension is outdated")
+            Button("Update extension") {
+                manager.reactivateSystemExtension()
+            }
             Divider()
         }
 

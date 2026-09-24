@@ -28,6 +28,10 @@ final class TunnelsManager: ObservableObject {
     @Published private(set) var tunnels: [TunnelContainer] = []
     @Published private(set) var menuBarIconState: MenuBarIconState = .disconnected
     @Published var lastError: String?
+    /// How the running packet-tunnel process compares with this app; nil while
+    /// no tunnel is connected (only a live provider process can answer). A
+    /// `.mismatch` means the system is still running an older extension build.
+    @Published private(set) var runningExtensionCheck: ExtensionVersionCheck?
 
     #if os(macOS)
     /// Activation state of the packet-tunnel system extension. On macOS the
@@ -42,6 +46,12 @@ final class TunnelsManager: ObservableObject {
     /// in project.yml), so deriving it from Bundle.main keeps it correct under
     /// any $(BUNDLE_ID_PREFIX) the build was signed with — no hardcoded prefix.
     private let providerBundleID = Bundle.main.bundleIdentifier! + ".PacketTunnel"
+
+    /// The version the extension should be: every target shares the app's.
+    private let appVersion = BundleVersion(infoDictionary: Bundle.main.infoDictionary)
+    /// Bumped per extension-version check so a slow reply for an earlier
+    /// session cannot overwrite a newer result.
+    private var extensionCheckGeneration = 0
 
     private var statusObserver: NSObjectProtocol?
     private var configObserver: NSObjectProtocol?
@@ -103,6 +113,9 @@ final class TunnelsManager: ObservableObject {
             }
             tunnels = next.sorted { tunnelNameIsLessThan($0.name, $1.name) }
             refreshMenuBarIconState()
+            // Covers a tunnel left connected across an app update: the new app
+            // launches while the old extension process keeps serving it.
+            refreshExtensionVersionCheck()
         } catch {
             lastError = "load failed: \(error.localizedDescription)"
         }
@@ -389,6 +402,16 @@ final class TunnelsManager: ObservableObject {
         refreshMenuBarIconState()
     }
 
+    #if os(macOS)
+    /// Resubmit the system-extension activation request — what a relaunch
+    /// does. When the registered extension is older than the bundled one,
+    /// sysextd replaces it and terminates the old process (dropping the
+    /// tunnel); the status change then re-runs the version check.
+    func reactivateSystemExtension() {
+        systemExtensionManager?.activate()
+    }
+    #endif
+
     // MARK: - Status routing
 
     private func handleStatusNotification(_ object: Any?) {
@@ -415,6 +438,26 @@ final class TunnelsManager: ObservableObject {
         }
         tunnel.refreshStatus()
         refreshMenuBarIconState()
+        refreshExtensionVersionCheck()
+    }
+
+    /// Re-check the running extension's version against the app's. Cleared
+    /// when no tunnel is connected; queried whenever one is.
+    private func refreshExtensionVersionCheck() {
+        extensionCheckGeneration += 1
+        let generation = extensionCheckGeneration
+        guard
+            let appVersion,
+            let connected = tunnels.first(where: { $0.status == .connected })
+        else {
+            runningExtensionCheck = nil
+            return
+        }
+        Task {
+            let result = await connected.checkExtensionVersion(expected: appVersion)
+            guard generation == extensionCheckGeneration else { return }
+            runningExtensionCheck = result
+        }
     }
 
     // MARK: - Helpers

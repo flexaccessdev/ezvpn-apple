@@ -45,5 +45,12 @@ in the device or Mac log as well.
   `/Applications` (retry `scripts/run-macos.sh --install`) or with
   `systemextensionsctl developer on`. Distributed (Developer ID + notarized)
   builds activate from `/Applications` with no developer mode.
+- A stale extension is detected while connected: the app sends provider
+  message byte 2 and compares the running extension's `BundleVersion` with its
+  own (every target shares one version). On a mismatch, or no reply from an
+  extension that predates the query, the profile list and menu bar warn and
+  offer "Update extension", which resubmits the activation request so sysextd
+  replaces the old extension. Reconnecting alone does not help: the extension
+  process outlives tunnel sessions.
 - Regenerate the project (`xcodegen generate`) after editing `project.yml`. The
   `.xcodeproj` is git-ignored on purpose.
