@@ -38,7 +38,9 @@ Options:
                               Defaults to ./build/${APP_NAME}-macos.xcarchive.
   -o, --export-path PATH      Output directory for the exported .app.
                               Defaults to ./build/export-macos.
-  -d, --dmg-path PATH         Output .dmg. Defaults to ./build/${APP_NAME}-<version>.dmg.
+  -d, --dmg-path PATH         Output .dmg. Defaults to ./build/${APP_NAME}.dmg (unversioned,
+                              like the sibling repos' release assets; the release
+                              tag carries the version).
 
 Notarization credentials (required for method=developer-id unless --skip-notarize).
 Use ONE of:
@@ -302,8 +304,7 @@ echo "Stapling notarization ticket to the app…"
 
 # Package the .dmg (drag-to-Applications), then notarize + staple the .dmg so
 # the disk image itself also passes Gatekeeper offline.
-VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP_PATH/Contents/Info.plist" 2>/dev/null || echo "0")"
-[[ -n "$DMG_PATH" ]] || DMG_PATH="$PROJECT_ROOT/build/${APP_NAME}-${VERSION}.dmg"
+[[ -n "$DMG_PATH" ]] || DMG_PATH="$PROJECT_ROOT/build/${APP_NAME}.dmg"
 [[ "$DMG_PATH" == *.dmg ]] || die "--dmg-path must end in .dmg"
 [[ -e "$DMG_PATH" ]] && /bin/rm -f "$DMG_PATH"
 

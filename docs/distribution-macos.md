@@ -39,7 +39,7 @@ xcodegen generate
 scripts/create-archive-macos.sh --notary-profile ezvpn-notary
 ```
 
-The result is `build/ezvpn-<version>.dmg`. Recipients drag **ezvpn** to
+The result is `build/ezvpn.dmg`. Recipients drag **ezvpn** to
 Applications, launch it, and approve the network extension once in System
 Settings (the app requests activation on first launch). Pass `-m debugging`
 instead for a local development-signed `.app` (no notarization or `.dmg`; runs
