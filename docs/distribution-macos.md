@@ -49,16 +49,16 @@ only on machines registered to your team). Run `--help` for all options.
 
 The **Release macOS DMG (Manual)** workflow
 (`.github/workflows/release-macos.yml`) runs the same script on a `macos-latest`
-runner and publishes the notarized `.dmg` as a GitHub **prerelease** — the
+runner and publishes the notarized `.dmg` as a GitHub **release** — the
 ready-to-run download for end users, no Apple account required to install it.
-Each run stamps the next version: the last `macos-v*` release (or project.yml's
-`MARKETING_VERSION`, if higher) with its patch number incremented, as both the
-app and extension version, with the workflow run number as the build number.
-The release is tagged `macos-v<version>` and titled with the core version it
-bundles. The stamp matters: sysextd only replaces an installed system extension
-whose version differs, so a release reusing a version would leave the old
-extension running after an upgrade. Locally, pass `--app-version X.Y.Z
---build-number N` to the script for the same effect. It is `workflow_dispatch`-only (never on push/PR)
+Like the sibling repos, it is versioned from the repo: the tag is `v<version>`
+from project.yml's `MARKETING_VERSION` (the title adds `CURRENT_PROJECT_VERSION`
+and the bundled core version), the run aborts if that tag already exists, and it
+is a real release when run on `main`, a prerelease from any other branch. So
+bump `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION` (0.0.N with build N, on
+every target) before each release. A unique version is required, not cosmetic:
+sysextd only replaces an installed system extension whose version differs, so a
+release reusing one would leave the old extension running after an upgrade. It is `workflow_dispatch`-only (never on push/PR)
 and limited to one run at a time, so the signing identity and API key are never
 exposed to untrusted code.
 
