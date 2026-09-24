@@ -1,7 +1,10 @@
 name: Release macOS DMG (Manual)
 
 # Builds a Developer-ID-signed, notarized, stapled drag-to-Applications .dmg and
-# attaches it to a published GitHub prerelease. Manual only — never runs on
+# attaches it to a published GitHub prerelease. Each run stamps the next app
+# version: the last macos-v* tag (or project.yml's MARKETING_VERSION, whichever
+# is higher) with its patch number incremented, and the run number as the build
+# number, so every release replaces the installed system extension. Manual only — never runs on
 # push/PR, so the signing identity and API key in secrets are never exposed to
 # untrusted code.
 on:
@@ -21,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_tag: ${{ steps.tag.outputs.release_tag }}
+      app_version: ${{ steps.tag.outputs.app_version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -30,10 +34,23 @@ jobs:
         run: |
           set -euo pipefail
 
-          timestamp="$(date -u +'%Y%m%d%H%M%S')"
-          short_sha="$(git rev-parse --short=7 "$GITHUB_SHA")"
+          # Next version: the higher of the last released macos-v* version and
+          # project.yml's MARKETING_VERSION, patch + 1. The concurrency group
+          # below serializes runs, so two runs never mint the same version.
+          last="$(git ls-remote --tags --refs origin 'refs/tags/macos-v*' \
+            | sed 's#.*refs/tags/macos-v##' | sort -V | tail -1)"
+          declared="$(sed -nE 's/^[[:space:]]*MARKETING_VERSION:[[:space:]]*"?([0-9.]+)"?.*/\1/p' project.yml | sort -V | tail -1)"
+          base="$(printf '%s\n' "$last" "$declared" | sed '/^$/d' | sort -V | tail -1)"
+          [[ "$base" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || {
+            echo "::error::cannot derive a version from '$base'"
+            exit 1
+          }
+          version="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
+          echo "app_version=$version" >> "$GITHUB_OUTPUT"
           # macos- prefix keeps these releases distinct from the iOS workflow's.
-          echo "release_tag=macos-${timestamp}-${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=macos-v${version}" >> "$GITHUB_OUTPUT"
+          core="$(sed -nE 's/^[[:space:]]*EZVPN_CORE_VERSION:[[:space:]]*"?([0-9.]+)"?.*/\1/p' project.yml | head -1)"
+          echo "release_title=Prerelease macOS v${version} (core ${core})" >> "$GITHUB_OUTPUT"
 
       - name: Abort if tag already exists
         run: |
@@ -56,7 +73,7 @@ jobs:
             --draft \
             --prerelease \
             --target "${{ github.sha }}" \
-            --title "Prerelease macOS ${{ steps.tag.outputs.release_tag }}" \
+            --title "${{ steps.tag.outputs.release_title }}" \
             --generate-notes
 
   build-macos:
@@ -147,6 +164,8 @@ jobs:
         env:
           ASC_API_KEY_ID: ${{ secrets.ASC_API_KEY_ID }}
           ASC_API_ISSUER_ID: ${{ secrets.ASC_API_ISSUER_ID }}
+          APP_VERSION: ${{ needs.setup.outputs.app_version }}
+          BUILD_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
           # Team + bundle prefix are read from Developer.local.xcconfig written
@@ -154,7 +173,9 @@ jobs:
           scripts/create-archive-macos.sh \
             --key "$RUNNER_TEMP/keys/AuthKey.p8" \
             --key-id "$ASC_API_KEY_ID" \
-            --issuer "$ASC_API_ISSUER_ID"
+            --issuer "$ASC_API_ISSUER_ID" \
+            --app-version "$APP_VERSION" \
+            --build-number "$BUILD_NUMBER"
 
       - name: Locate the DMG
         id: dmg
