@@ -8,7 +8,7 @@ import PackageDescription
 // (`swift test` in this directory), outside the host app and extension targets.
 let package = Package(
     name: "TunnelCore",
-    platforms: [.iOS(.v17), .macOS(.v13)],
+    platforms: [.iOS(.v17), .macOS("15.0")],
     products: [
         .library(name: "TunnelCore", targets: ["TunnelCore"]),
     ],
