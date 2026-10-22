@@ -124,3 +124,7 @@ Follow [docs/building.md](docs/building.md): copy
 `xcodegen generate`, then build with `scripts/run-device-ios.sh <DEVICE_ID>`.
 Xcode signs it as it builds. (Building the macOS app from source works the same
 way with `scripts/run-macos.sh`.)
+
+## License
+
+MIT — see [LICENSE](LICENSE).
