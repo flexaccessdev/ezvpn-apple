@@ -69,6 +69,10 @@ schemes:
       config: Debug
     test:
       config: Debug
+      # The tests run inside the app (TEST_HOST), which would otherwise open
+      # the user's real Keychain and list their VPN profiles at launch.
+      environmentVariables:
+        EZVPN_KEYCHAIN: mock
       gatherCoverageData: true
       coverageTargets:
         - Ezvpn
