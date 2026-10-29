@@ -110,7 +110,7 @@ final class AppModelTests: XCTestCase {
 
     func testAuthKeyKeychainRoundTripAndUpdate() throws {
         let id = UUID()
-        let storage = InMemoryAuthKeyKeychain()
+        let storage = InMemoryKeychain()
         let client = storage.client
         defer { try? AuthKeyKeychain.delete(for: id, client: client) }
 
@@ -143,7 +143,7 @@ final class AppModelTests: XCTestCase {
 
     func testRelayTokenCoexistsWithAuthKeyUnderSameProfile() throws {
         let id = UUID()
-        let storage = InMemoryAuthKeyKeychain()
+        let storage = InMemoryKeychain()
         let client = storage.client
         let relay = AuthKeyKeychain.relayService
         defer {

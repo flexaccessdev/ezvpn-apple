@@ -19,6 +19,19 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     /// provider's calling queue while the Rust side shuts down.
     private let workQueue = DispatchQueue(label: "ezvpn.PacketTunnel.workQueue")
 
+    #if os(macOS)
+    /// Where the secrets of a profile saved by an `EZVPN_KEYCHAIN=mock` run
+    /// (`ProviderConfigKey.mockKeychain`) are kept instead of the System
+    /// keychain: in memory, for the life of this extension process, shared
+    /// by every tunnel it serves.
+    private static let mockKeychain = InMemoryKeychain()
+
+    /// The keychain that holds this profile's daemon-side secret copies.
+    private static func daemonKeychain(conf: [String: Any]) -> AuthKeyKeychainClient {
+        conf[ProviderConfigKey.mockKeychain] as? Bool == true ? mockKeychain.client : .security
+    }
+    #endif
+
     /// What was actually applied to the interface (assigned addresses, tunnel
     /// routes, bypass routes, MTU), kept so the app can query it over
     /// `handleAppMessage` — the same runtime-configuration mechanism the
@@ -77,7 +90,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             // data-protection keychain, so the app hands the auth key over in
             // the start options on every app-initiated connect, and the provider
             // persists it in the System keychain (the daemon keychain) so
-            // system-initiated restarts can connect without the app.
+            // system-initiated restarts can connect without the app. A mock
+            // profile's copy stays in memory instead (`daemonKeychain`).
             guard
                 let idString = conf[ProviderConfigKey.profileID] as? String,
                 let profileID = UUID(uuidString: idString)
@@ -85,11 +99,13 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                 completionHandler(Self.error("missing profile_id in providerConfiguration"))
                 return
             }
+            let keychain = Self.daemonKeychain(conf: conf)
             if let optionKey = options?[TunnelStartOption.authKey] as? String,
                !optionKey.isEmpty {
                 authKey = optionKey
                 do {
-                    try AuthKeyKeychain.persistDaemonSecret(optionKey, for: profileID)
+                    try AuthKeyKeychain.persistDaemonSecret(
+                        optionKey, for: profileID, client: keychain)
                 } catch {
                     // The in-hand key still works for this session; only
                     // app-less restarts are affected. Log and continue.
@@ -98,7 +114,7 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
                         log: log, type: .error, error.localizedDescription)
                 }
             } else {
-                authKey = try AuthKeyKeychain.daemonSecret(for: profileID)
+                authKey = try AuthKeyKeychain.daemonSecret(for: profileID, client: keychain)
             }
             #else
             guard let passwordReference = proto.passwordReference else {
@@ -600,7 +616,8 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
     ///   app-initiated connect hands the token over in the start options and the
     ///   provider persists it in the System keychain; an app-less restart reads
     ///   that persisted copy. An app connect that carries no relay token clears
-    ///   any stale System-keychain copy so a removed token does not linger.
+    ///   any stale System-keychain copy so a removed token does not linger. A
+    ///   mock profile keeps that copy in memory instead (`daemonKeychain`).
     ///
     /// Returns nil when no custom relays are configured (the default relays never
     /// take a token) or when nothing is stored.
@@ -616,13 +633,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         else { return nil }
 
         #if os(macOS)
+        let keychain = daemonKeychain(conf: conf)
         if !relayURLs.isEmpty,
            let optionRelay = options?[TunnelStartOption.relayAuthToken] as? String,
            !optionRelay.isEmpty {
             do {
                 try AuthKeyKeychain.persistDaemonSecret(
                     optionRelay, for: profileID,
-                    service: AuthKeyKeychain.relayService)
+                    service: AuthKeyKeychain.relayService, client: keychain)
             } catch {
                 os_log(
                     "could not persist relay token to the System keychain: %{public}@",
@@ -635,14 +653,14 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
             // relay URLs were cleared): drop any stale System-keychain copy so a
             // removed token does not linger. Runs regardless of relayURLs.
             try? AuthKeyKeychain.deleteDaemonSecret(
-                for: profileID, service: AuthKeyKeychain.relayService)
+                for: profileID, service: AuthKeyKeychain.relayService, client: keychain)
             return nil
         }
         // App-less restart (no start options): use the persisted copy, but only
         // when custom relays are actually configured.
         guard !relayURLs.isEmpty else { return nil }
         return try? AuthKeyKeychain.daemonSecret(
-            for: profileID, service: AuthKeyKeychain.relayService)
+            for: profileID, service: AuthKeyKeychain.relayService, client: keychain)
         #else
         guard !relayURLs.isEmpty else { return nil }
         return try? AuthKeyKeychain.secret(

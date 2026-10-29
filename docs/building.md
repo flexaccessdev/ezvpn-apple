@@ -142,6 +142,30 @@ the core release; bump it by hand.
    IPv4 `network`, IPv6 `network6`, or both, and add routes covering the private
    resources you want to reach.
 
+## Mock keychain for end-to-end tests (macOS)
+
+Launch the app with `EZVPN_KEYCHAIN=mock` for an end-to-end or QA run that must
+not touch this account's Keychain items or saved profiles:
+
+```sh
+open --env EZVPN_KEYCHAIN=mock /Applications/ezvpn.app
+# or run the binary directly
+EZVPN_KEYCHAIN=mock /Applications/ezvpn.app/Contents/MacOS/ezvpn
+```
+
+- Every secret (the auth-key list and each profile's auth key and relay token)
+  lives in memory and is gone when the app quits. The window title says
+  *ezvpn (mock keychain)*.
+- Profiles saved in a mock run are marked in their `providerConfiguration`
+  (`mock_keychain`): a mock run lists only those, and removes the ones an
+  earlier mock run left behind, so every mock run starts empty. A normal run
+  never lists or touches them.
+- The system extension keeps a mock profile's secret copies in its own memory
+  instead of the System keychain. A system-initiated restart works only while
+  that extension process lives.
+- The variable takes `mock` or nothing: any other value is refused at launch
+  rather than read as the real Keychain.
+
 ## Unit tests
 
 The pure IP/CIDR logic (prefix overlap, netmask math, the split-tunnel vs

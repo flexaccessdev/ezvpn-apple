@@ -83,7 +83,10 @@ final class TunnelsManager: ObservableObject {
         systemExtensionManager = sysext
         sysext.activate()
         #endif
-        Task { await reload() }
+        Task {
+            if KeychainBackend.current.isMock { await removeMockLeftovers() }
+            await reload()
+        }
     }
 
     deinit {
@@ -96,13 +99,18 @@ final class TunnelsManager: ObservableObject {
     /// Re-read all VPN preferences, re-attaching reloaded managers to existing
     /// containers (so identity, observers, and in-flight activation state
     /// survive) and dropping any removed outside the app. Managers without the
-    /// current stable-id + Keychain-reference format are ignored.
+    /// current stable-id + Keychain-reference format are ignored, and so are
+    /// those of the other Keychain mode: an `EZVPN_KEYCHAIN=mock` run lists only
+    /// the profiles it saved, a normal run never lists one of them.
     func reload() async {
         do {
             let managers = try await NETunnelProviderManager.loadAllFromPreferences()
             var next: [TunnelContainer] = []
             for manager in managers {
-                guard let id = TunnelContainer.profileID(of: manager) else { continue }
+                guard
+                    TunnelContainer.isMockKeychain(manager) == KeychainBackend.current.isMock,
+                    let id = TunnelContainer.profileID(of: manager)
+                else { continue }
                 if let existing = tunnels.first(where: { $0.id == id }) {
                     existing.attach(manager)
                     existing.refreshStatus()
@@ -118,6 +126,21 @@ final class TunnelsManager: ObservableObject {
             refreshExtensionVersionCheck()
         } catch {
             lastError = "load failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// An `EZVPN_KEYCHAIN=mock` run starts empty: the profiles an earlier mock
+    /// run saved lost their secrets with that run's in-memory Keychain, so
+    /// they are removed rather than listed unable to connect. Never touches a
+    /// normal run's profiles.
+    private func removeMockLeftovers() async {
+        do {
+            for manager in try await NETunnelProviderManager.loadAllFromPreferences()
+            where TunnelContainer.isMockKeychain(manager) {
+                try await manager.removeFromPreferences()
+            }
+        } catch {
+            lastError = "removing earlier mock profiles failed: \(error.localizedDescription)"
         }
     }
 
@@ -491,7 +514,11 @@ final class TunnelsManager: ObservableObject {
         proto.providerBundleIdentifier = providerBundleID
         // serverAddress is shown in Settings > VPN; node id is fine here.
         proto.serverAddress = profile.serverNodeID
-        proto.providerConfiguration = profile.providerConfiguration()
+        var configuration = profile.providerConfiguration()
+        if KeychainBackend.current.isMock {
+            configuration[ProviderConfigKey.mockKeychain] = true
+        }
+        proto.providerConfiguration = configuration
         proto.passwordReference = passwordReference
         return proto
     }

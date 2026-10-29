@@ -27,7 +27,7 @@ final class AuthKeyStoreTests: XCTestCase {
 
     func testAddPersistsAndReloadsWithDerivedPublicKeys() throws {
         // The fake's client closures hold it unowned, so keep it alive here.
-        let storage = InMemoryAuthKeyKeychain()
+        let storage = InMemoryKeychain()
         let client = storage.client
         let store = AuthKeyStore(client: client)
         let pair = try XCTUnwrap(AuthKey.generate())
@@ -47,7 +47,7 @@ final class AuthKeyStoreTests: XCTestCase {
     }
 
     func testAddRejectsBadNamesAndSecrets() throws {
-        let storage = InMemoryAuthKeyKeychain()
+        let storage = InMemoryKeychain()
         let store = AuthKeyStore(client: storage.client)
         let pair = try XCTUnwrap(AuthKey.generate())
         let other = try XCTUnwrap(AuthKey.generate())
@@ -62,7 +62,7 @@ final class AuthKeyStoreTests: XCTestCase {
     }
 
     func testRenameAndDelete() throws {
-        let storage = InMemoryAuthKeyKeychain()
+        let storage = InMemoryKeychain()
         let client = storage.client
         let store = AuthKeyStore(client: client)
         let first = try unwrapSuccess(
