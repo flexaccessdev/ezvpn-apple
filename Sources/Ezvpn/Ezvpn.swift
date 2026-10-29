@@ -14,9 +14,28 @@ struct Ezvpn: App {
     /// per profile), so it lives next to the tunnel manager.
     @StateObject private var authKeys = AuthKeyStore()
 
+    #if os(macOS)
+    init() {
+        // A refused EZVPN_KEYCHAIN never falls back to the real Keychain: say
+        // why and quit before anything reads a secret.
+        if case .refused(let error) = KeychainBackend.current {
+            let alert = NSAlert()
+            alert.alertStyle = .critical
+            alert.messageText = "ezvpn cannot start"
+            alert.informativeText = error.description
+            alert.runModal()
+            exit(1)
+        }
+    }
+    #endif
+
     var body: some Scene {
         #if os(macOS)
-        Window("ezvpn", id: EzvpnScene.mainWindowID) {
+        // A mock run says so, so its empty profile list isn't taken for lost data.
+        Window(
+            KeychainBackend.current.isMock ? "ezvpn (mock keychain)" : "ezvpn",
+            id: EzvpnScene.mainWindowID
+        ) {
             TunnelListView()
                 .environmentObject(manager)
                 .environmentObject(authKeys)

@@ -1,16 +1,17 @@
 import Foundation
 import Security
-@testable import ezvpn
 
-/// In-memory stand-in for the Keychain, shared by the tests that exercise
-/// `AuthKeyKeychain` and `AuthKeyStore`. Models just enough of the real
-/// behavior to be useful: add/update/copy/delete keyed by (service, account),
-/// plus persistent-reference lookup (the iOS extension's path).
+/// In-memory stand-in for the Keychain: the `EZVPN_KEYCHAIN=mock` backend (see
+/// `KeychainBackend`), and what the tests that exercise `AuthKeyKeychain` and
+/// `AuthKeyStore` run against. Models just enough of the real behavior to be
+/// useful: add/update/copy/delete keyed by (service, account), plus
+/// persistent-reference lookup (the iOS extension's path). Thread-safe: the
+/// system extension can serve several tunnels at once.
 ///
 /// Keep the instance alive for as long as its `client` is used: the client's
-/// closures capture it `unowned`, so `InMemoryAuthKeyKeychain().client` alone
+/// closures capture it `unowned`, so `InMemoryKeychain().client` alone
 /// traps the moment the first query runs.
-final class InMemoryAuthKeyKeychain {
+final class InMemoryKeychain {
     private struct Item {
         var secretData: Data
         let persistentReference: Data
@@ -19,6 +20,7 @@ final class InMemoryAuthKeyKeychain {
     // Keyed by (service, account) so a single profile id can hold both the
     // auth-key and relay-token secrets at once, like the real Keychain.
     private var items: [String: Item] = [:]
+    private let lock = NSLock()
 
     private func storageKey(service: String?, account: String) -> String {
         "\(service ?? AuthKeyKeychain.service)\u{0}\(account)"
@@ -26,13 +28,19 @@ final class InMemoryAuthKeyKeychain {
 
     var client: AuthKeyKeychainClient {
         AuthKeyKeychainClient(
-            add: { [unowned self] query in add(query) },
+            add: { [unowned self] query in locked { add(query) } },
             update: { [unowned self] query, attributes in
-                update(query, attributes: attributes)
+                locked { update(query, attributes: attributes) }
             },
-            copyMatching: { [unowned self] query in copyMatching(query) },
-            delete: { [unowned self] query in delete(query) }
+            copyMatching: { [unowned self] query in locked { copyMatching(query) } },
+            delete: { [unowned self] query in locked { delete(query) } }
         )
+    }
+
+    private func locked<T>(_ body: () -> T) -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
     }
 
     private func add(_ query: [String: Any]) -> AuthKeyKeychainClient.Result {

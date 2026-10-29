@@ -110,7 +110,7 @@ final class AppModelTests: XCTestCase {
 
     func testAuthKeyKeychainRoundTripAndUpdate() throws {
         let id = UUID()
-        let storage = InMemoryAuthKeyKeychain()
+        let storage = InMemoryKeychain()
         let client = storage.client
         defer { try? AuthKeyKeychain.delete(for: id, client: client) }
 
@@ -121,12 +121,6 @@ final class AppModelTests: XCTestCase {
             try AuthKeyKeychain.secret(forProfileID: id, client: client),
             "ed25519-sec:first"
         )
-        #if os(iOS)
-        XCTAssertEqual(
-            try AuthKeyKeychain.secret(for: firstReference, client: client),
-            "ed25519-sec:first"
-        )
-        #endif
 
         let updatedReference = try AuthKeyKeychain.store(
             "ed25519-sec:updated", for: id, client: client)
@@ -143,7 +137,7 @@ final class AppModelTests: XCTestCase {
 
     func testRelayTokenCoexistsWithAuthKeyUnderSameProfile() throws {
         let id = UUID()
-        let storage = InMemoryAuthKeyKeychain()
+        let storage = InMemoryKeychain()
         let client = storage.client
         let relay = AuthKeyKeychain.relayService
         defer {

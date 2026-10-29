@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import TunnelCore
 
 /// Keys for the transient `startTunnel(options:)` dictionary the app passes to
 /// the provider. Options travel in memory through the NE session — never
@@ -36,6 +37,58 @@ struct AuthKeyKeychainClient {
             SecItemDelete(query as CFDictionary)
         }
     )
+
+    /// This run's Keychain: `.security`, or the in-memory one under
+    /// `EZVPN_KEYCHAIN=mock` (see `KeychainBackend`).
+    static var current: AuthKeyKeychainClient { KeychainBackend.current.client }
+
+    /// Fails every call: the client behind a refused `EZVPN_KEYCHAIN`, so
+    /// nothing reaches the real Keychain even before the app exits.
+    static let unavailable = AuthKeyKeychainClient(
+        add: { _ in (errSecNotAvailable, nil) },
+        update: { _, _ in errSecNotAvailable },
+        copyMatching: { _ in (errSecNotAvailable, nil) },
+        delete: { _ in errSecNotAvailable }
+    )
+}
+
+/// Where the app keeps its secrets this run, resolved once at launch from
+/// `EZVPN_KEYCHAIN` (`KeychainMode`): the real Keychain, or, on macOS, an
+/// in-memory one that dies with the process, for e2e and QA runs that must
+/// not prompt or touch the account's items. Profiles saved by a mock run are
+/// marked (`ProviderConfigKey.mockKeychain`) and kept apart by
+/// `TunnelsManager`. The packet-tunnel provider never reads the variable:
+/// it goes by that per-profile marker.
+enum KeychainBackend {
+    case system
+    case mock(InMemoryKeychain)
+    /// A value `KeychainMode` refuses; the app reports it and exits at launch.
+    case refused(KeychainModeError)
+
+    static let current: KeychainBackend = {
+        #if os(macOS)
+        switch KeychainMode.parse(ProcessInfo.processInfo.environment[keychainModeVariable]) {
+        case .success(.system): return .system
+        case .success(.mock): return .mock(InMemoryKeychain())
+        case .failure(let error): return .refused(error)
+        }
+        #else
+        return .system
+        #endif
+    }()
+
+    var isMock: Bool {
+        if case .mock = self { return true }
+        return false
+    }
+
+    var client: AuthKeyKeychainClient {
+        switch self {
+        case .system: return .security
+        case .mock(let keychain): return keychain.client
+        case .refused: return .unavailable
+        }
+    }
 }
 
 /// Keychain storage for the app's secrets: the client's ed25519 auth key
@@ -73,7 +126,7 @@ enum AuthKeyKeychain {
         _ secret: String,
         account: String,
         service: String,
-        client: AuthKeyKeychainClient = .security
+        client: AuthKeyKeychainClient = .current
     ) throws -> Data {
         guard !secret.isEmpty, let secretData = secret.data(using: .utf8) else {
             throw AuthKeyKeychainError.invalidSecret
@@ -120,7 +173,7 @@ enum AuthKeyKeychain {
         _ secret: String,
         for profileID: UUID,
         service: String = AuthKeyKeychain.service,
-        client: AuthKeyKeychainClient = .security
+        client: AuthKeyKeychainClient = .current
     ) throws -> Data {
         try store(
             secret, account: profileID.uuidString, service: service, client: client)
@@ -136,7 +189,7 @@ enum AuthKeyKeychain {
     /// not valid").
     static func secret(
         for persistentReference: Data,
-        client: AuthKeyKeychainClient = .security
+        client: AuthKeyKeychainClient = .current
     ) throws -> String {
         try decodeSecret(client.copyMatching([
             kSecValuePersistentRef as String: persistentReference,
@@ -155,7 +208,7 @@ enum AuthKeyKeychain {
     static func secret(
         account: String,
         service: String,
-        client: AuthKeyKeychainClient = .security
+        client: AuthKeyKeychainClient = .current
     ) throws -> String {
         var query = try identityQuery(account: account, service: service)
         query[kSecReturnData as String] = true
@@ -167,7 +220,7 @@ enum AuthKeyKeychain {
     static func secret(
         forProfileID profileID: UUID,
         service: String = AuthKeyKeychain.service,
-        client: AuthKeyKeychainClient = .security
+        client: AuthKeyKeychainClient = .current
     ) throws -> String {
         try secret(
             account: profileID.uuidString, service: service, client: client)
@@ -275,7 +328,7 @@ enum AuthKeyKeychain {
     static func delete(
         account: String,
         service: String,
-        client: AuthKeyKeychainClient = .security
+        client: AuthKeyKeychainClient = .current
     ) throws {
         let status = client.delete(try identityQuery(account: account, service: service))
         guard status == errSecSuccess || status == errSecItemNotFound else {
@@ -288,7 +341,7 @@ enum AuthKeyKeychain {
     static func delete(
         for profileID: UUID,
         service: String = AuthKeyKeychain.service,
-        client: AuthKeyKeychainClient = .security
+        client: AuthKeyKeychainClient = .current
     ) throws {
         try delete(
             account: profileID.uuidString, service: service, client: client)

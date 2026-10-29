@@ -99,6 +99,13 @@ final class TunnelContainer: ObservableObject, Identifiable {
         return UUID(uuidString: idString)
     }
 
+    /// Whether the manager was saved by an `EZVPN_KEYCHAIN=mock` run (see
+    /// `KeychainBackend`).
+    static func isMockKeychain(_ manager: NETunnelProviderManager) -> Bool {
+        let proto = manager.protocolConfiguration as? NETunnelProviderProtocol
+        return proto?.providerConfiguration?[ProviderConfigKey.mockKeychain] as? Bool == true
+    }
+
     /// Fails when the manager carries no stable `profile_id` or has no Keychain
     /// credential reference.
     init?(manager: NETunnelProviderManager) {

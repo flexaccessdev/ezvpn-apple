@@ -48,7 +48,7 @@ final class AuthKeyStore: ObservableObject {
     /// persisting would replace the real list with this partial view.
     private let loadError: ValidationError?
 
-    init(client: AuthKeyKeychainClient = .security) {
+    init(client: AuthKeyKeychainClient = .current) {
         self.client = client
         switch Self.loadStored(client: client) {
         case .success(let stored):

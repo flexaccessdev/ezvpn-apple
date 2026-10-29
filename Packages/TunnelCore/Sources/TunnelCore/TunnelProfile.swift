@@ -79,6 +79,10 @@ public enum ProviderConfigKey {
     public static let routes6 = "routes6"
     public static let dnsServers = "dns_servers"
     public static let dnsMatchDomains = "dns_match_domains"
+    /// `true` on a profile saved by an `EZVPN_KEYCHAIN=mock` run (see
+    /// `KeychainMode`): only such a run lists it, and the extension keeps its
+    /// secrets in memory instead of the System keychain. Never set otherwise.
+    public static let mockKeychain = "mock_keychain"
 }
 
 public extension TunnelProfile {
