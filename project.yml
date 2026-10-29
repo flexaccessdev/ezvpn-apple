@@ -70,7 +70,8 @@ schemes:
     test:
       config: Debug
       # The tests run inside the app (TEST_HOST), which would otherwise open
-      # the user's real Keychain and list their VPN profiles at launch.
+      # the user's real Keychain and list their VPN profiles at launch. Only
+      # macOS honors the variable, so the test bundle is macOS-only (below).
       environmentVariables:
         EZVPN_KEYCHAIN: mock
       gatherCoverageData: true
@@ -238,24 +239,23 @@ targets:
       - package: Ezvpn
         product: libezvpn
 
+  # macOS only: the tests run inside the app, and only the macOS app can be
+  # kept off the real Keychain and saved VPN profiles (EZVPN_KEYCHAIN=mock in
+  # the scheme's test action). On iOS the host app would open both.
   EzvpnTests:
     type: bundle.unit-test
-    supportedDestinations: [iOS, macOS]
+    supportedDestinations: [macOS]
     sources:
       - Tests/EzvpnTests
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(BUNDLE_ID_PREFIX).EzvpnTests
         GENERATE_INFOPLIST_FILE: YES
-        "ARCHS[sdk=macosx*]": arm64
-        # XcodeGen's automatic host path sees this as one multi-destination
-        # target and emits the iOS layout for every SDK. Override only macOS,
-        # whose executable lives below Contents/MacOS.
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ezvpn.app/ezvpn"
-        "TEST_HOST[sdk=macosx*]": "$(BUILT_PRODUCTS_DIR)/ezvpn.app/Contents/MacOS/ezvpn"
+        ARCHS: arm64
+        # The host app is multi-destination, so XcodeGen's automatic host path
+        # is the iOS layout; the macOS executable lives below Contents/MacOS.
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/ezvpn.app/Contents/MacOS/ezvpn"
     dependencies:
-      # XcodeGen uses this app dependency to configure the correct TEST_HOST
-      # path on both iOS and macOS.
       - target: Ezvpn
       - package: TunnelCore
         product: TunnelCore

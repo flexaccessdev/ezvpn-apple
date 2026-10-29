@@ -121,12 +121,6 @@ final class AppModelTests: XCTestCase {
             try AuthKeyKeychain.secret(forProfileID: id, client: client),
             "ed25519-sec:first"
         )
-        #if os(iOS)
-        XCTAssertEqual(
-            try AuthKeyKeychain.secret(for: firstReference, client: client),
-            "ed25519-sec:first"
-        )
-        #endif
 
         let updatedReference = try AuthKeyKeychain.store(
             "ed25519-sec:updated", for: id, client: client)

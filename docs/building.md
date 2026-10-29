@@ -168,6 +168,7 @@ EZVPN_KEYCHAIN=mock /Applications/ezvpn.app/Contents/MacOS/ezvpn
 - The `Ezvpn` scheme's test action sets it too: the unit tests run inside the
   app (`TEST_HOST`), so the app they launch never opens the real Keychain, and
   the tests that exercise the Keychain code use the same `InMemoryKeychain`.
+  The iOS app ignores the variable, so the test bundle is macOS-only.
 
 ## Unit tests
 
