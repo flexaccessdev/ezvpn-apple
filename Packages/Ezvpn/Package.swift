@@ -32,8 +32,8 @@ func localBinaryTarget() -> Target? {
 
 let binaryTarget = localBinaryTarget() ?? .binaryTarget(
     name: "libezvpn",
-    url: "https://github.com/flexaccessdev/ezvpn/releases/download/v0.0.72/libezvpn-apple.xcframework.zip",
-    checksum: "0f0cba6617cba01ba5b1f2b4b62f3b229f712bfd68644a13f7f9d7318b4466bd"
+    url: "https://github.com/flexaccessdev/ezvpn/releases/download/v0.0.73/libezvpn-apple.xcframework.zip",
+    checksum: "97e56de90534b8e6e65dd59ef423d670fda7c792d944c75d93bc9433b8150f52"
 )
 
 let package = Package(
