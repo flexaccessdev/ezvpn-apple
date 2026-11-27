@@ -7,6 +7,7 @@ final class TunnelProfileTests: XCTestCase {
         name: String = "Home",
         authKeyID: String = "key-1",
         relayURLs: [String] = ["https://relay.example"],
+        relayQuicAddrDiscovery: Bool = false,
         routes: [String] = ["10.0.0.0/8"],
         routes6: [String] = ["fd00::/64"],
         dnsServers: [String] = ["10.22.33.10"],
@@ -16,7 +17,8 @@ final class TunnelProfileTests: XCTestCase {
             id: id, name: name,
             serverNodeID: "node-abc",
             authKeyID: authKeyID,
-            relayURLs: relayURLs, routes: routes, routes6: routes6,
+            relayURLs: relayURLs, relayQuicAddrDiscovery: relayQuicAddrDiscovery,
+            routes: routes, routes6: routes6,
             dnsServers: dnsServers, dnsMatchDomains: dnsMatchDomains
         )
     }
@@ -27,6 +29,7 @@ final class TunnelProfileTests: XCTestCase {
         XCTAssertEqual(conf["server_node_id"] as? String, "node-abc")
         XCTAssertEqual(conf["auth_key_id"] as? String, "key-1")
         XCTAssertEqual(conf["relay_urls"] as? [String], ["https://relay.example"])
+        XCTAssertEqual(conf["relay_quic_addr_discovery"] as? Bool, false)
         XCTAssertEqual(conf["routes"] as? [String], ["10.0.0.0/8"])
         XCTAssertEqual(conf["routes6"] as? [String], ["fd00::/64"])
         XCTAssertEqual(conf["dns_servers"] as? [String], ["10.22.33.10"])
@@ -79,6 +82,7 @@ final class TunnelProfileTests: XCTestCase {
         XCTAssertEqual(decoded?.serverNodeID, "")
         XCTAssertEqual(decoded?.authKeyID, "")
         XCTAssertEqual(decoded?.relayURLs, [])
+        XCTAssertEqual(decoded?.relayQuicAddrDiscovery, true)
         XCTAssertEqual(decoded?.routes, [])
         XCTAssertEqual(decoded?.routes6, [])
         XCTAssertEqual(decoded?.dnsServers, [])

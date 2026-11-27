@@ -82,6 +82,7 @@ final class AppModelTests: XCTestCase {
             serverNodeID: "node-id",
             authKeyID: "key-1",
             relayURLs: ["relay"],
+            relayQuicAddrDiscovery: false,
             routes: ["10.0.0.0/8"],
             routes6: ["fd00::/8"],
             dnsServers: ["10.0.0.53"],

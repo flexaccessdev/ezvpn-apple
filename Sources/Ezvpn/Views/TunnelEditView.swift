@@ -33,6 +33,10 @@ struct TunnelEditView: View {
         return false
     }
 
+    private var hasCustomRelays: Bool {
+        !form.relayURLs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var canSave: Bool {
         form.hasRequiredFields && !saving
     }
@@ -76,18 +80,28 @@ struct TunnelEditView: View {
                         .foregroundStyle(.orange)
                 }
                 Button("Manage keys…") { showingKeys = true }
+            }
+
+            Section {
                 LabeledField("Relay URLs", hint: "comma-separated, optional") {
                     TextField("", text: $form.relayURLs)
                         .fieldStyle()
                 }
+                // Both settings only apply to custom relays. Each stays enabled
+                // while it holds a non-default value with no relay URLs, so it
+                // can be reset rather than being stuck behind a disabled control
+                // that would fail validation on save.
                 LabeledField("Relay token", hint: "optional, custom relays only") {
                     SecureField("", text: $form.relayAuthToken)
                         .fieldStyle()
-                        .disabled(
-                            form.relayURLs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                                && form.relayAuthToken.isEmpty
-                        )
+                        .disabled(!hasCustomRelays && form.relayAuthToken.isEmpty)
                 }
+                Toggle("QUIC address discovery", isOn: $form.relayQuicAddrDiscovery)
+                    .disabled(!hasCustomRelays && form.relayQuicAddrDiscovery)
+            } header: {
+                Text("Custom relays")
+            } footer: {
+                Text("Leave the relay URLs blank to use iroh's default relays. One relay is enough; more add failover. Turn QUIC address discovery off when the relays are behind a Cloudflare Tunnel or another HTTP-only front, which cannot serve it and otherwise delay each connect by up to 3 s. It applies to all the relays or none.")
             }
 
             Section {

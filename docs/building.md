@@ -129,7 +129,12 @@ the core release; bump it by hand.
    - *Name* — a unique label for the profile (shown in the list and Settings > VPN).
    - *Server node id* — the `ezvpn` server's iroh endpoint id.
    - *Auth key* — required; which key from the list authenticates this profile.
-   - *Relay URLs* — optional hints; leave blank to use iroh defaults.
+   - *Relay URLs* — optional custom relays; leave blank to use iroh defaults.
+     One relay is accepted (no home-relay failover); more add failover.
+   - *Relay token* — optional shared bearer token, custom relays only.
+   - *QUIC address discovery* — on by default; custom relays only, all or none.
+     Turn it off for relays behind a Cloudflare Tunnel or another HTTP-only
+     front, which cannot serve it and otherwise delay each connect by up to 3 s.
    - *IPv4 routes* — optional comma-separated CIDRs to tunnel.
    - *IPv6 routes* — optional comma-separated CIDRs to tunnel.
    - *DNS servers* (iOS only) — optional comma-separated IP literals to use as tunnel DNS.

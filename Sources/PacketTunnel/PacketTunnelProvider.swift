@@ -168,6 +168,12 @@ class PacketTunnelProvider: NEPacketTunnelProvider {
         if let relayAuthToken, !relayAuthToken.isEmpty, !relayURLs.isEmpty {
             configDict["relay_auth_token"] = relayAuthToken
         }
+        // Like the token, QUIC address discovery is a custom-relay setting the
+        // core rejects with the default relays, whichever value it has.
+        if !relayURLs.isEmpty {
+            configDict["relay_quic_addr_discovery"] =
+                conf[ProviderConfigKey.relayQuicAddrDiscovery] as? Bool ?? true
+        }
         guard
             let configData = try? JSONSerialization.data(withJSONObject: configDict),
             let configStr = String(data: configData, encoding: .utf8)
