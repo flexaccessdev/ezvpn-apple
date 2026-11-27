@@ -88,6 +88,15 @@ final class TunnelProfileFormTests: XCTestCase {
         XCTAssertFalse(profile.relayQuicAddrDiscovery)
     }
 
+    func testHasCustomRelaysParsesLikeSave() {
+        var form = requiredForm()
+        XCTAssertFalse(form.hasCustomRelays)
+        form.relayURLs = " , ,\n "
+        XCTAssertFalse(form.hasCustomRelays)
+        form.relayURLs = ", https://relay.one"
+        XCTAssertTrue(form.hasCustomRelays)
+    }
+
     func testMakeSubmissionRejectsQuicAddrDiscoveryOffWithoutRelays() {
         var form = requiredForm()
         form.relayURLs = " , "

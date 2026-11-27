@@ -37,6 +37,12 @@ struct TunnelProfileForm: Equatable {
         dnsMatchDomains = profile.dnsMatchDomains.joined(separator: ", ")
     }
 
+    /// Whether the relay URLs field holds at least one URL, parsed as Save
+    /// parses it (so a stray comma is not a relay).
+    var hasCustomRelays: Bool {
+        !Self.splitCSV(relayURLs).isEmpty
+    }
+
     var hasRequiredFields: Bool {
         !Self.trimmed(name).isEmpty
             && !Self.trimmed(serverNodeID).isEmpty

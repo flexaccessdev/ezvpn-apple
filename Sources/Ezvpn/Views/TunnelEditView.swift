@@ -33,10 +33,6 @@ struct TunnelEditView: View {
         return false
     }
 
-    private var hasCustomRelays: Bool {
-        !form.relayURLs.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
     private var canSave: Bool {
         form.hasRequiredFields && !saving
     }
@@ -94,14 +90,14 @@ struct TunnelEditView: View {
                 LabeledField("Relay token", hint: "optional, custom relays only") {
                     SecureField("", text: $form.relayAuthToken)
                         .fieldStyle()
-                        .disabled(!hasCustomRelays && form.relayAuthToken.isEmpty)
+                        .disabled(!form.hasCustomRelays && form.relayAuthToken.isEmpty)
                 }
                 Toggle("QUIC address discovery", isOn: $form.relayQuicAddrDiscovery)
-                    .disabled(!hasCustomRelays && form.relayQuicAddrDiscovery)
+                    .disabled(!form.hasCustomRelays && form.relayQuicAddrDiscovery)
             } header: {
                 Text("Custom relays")
             } footer: {
-                Text("Leave the relay URLs blank to use iroh's default relays. One relay is enough; more add failover. Turn QUIC address discovery off when the relays are behind a Cloudflare Tunnel or another HTTP-only front, which cannot serve it and otherwise delay each connect by up to 3 s. It applies to all the relays or none.")
+                Text("Leave the relay URLs blank to use iroh's default relays. Otherwise list every relay the server is configured with: custom relays turn off address lookup, so the client finds the server only through these URLs, and the server may be homed on any of its relays. Turn QUIC address discovery off when the relays are behind a Cloudflare Tunnel or another HTTP-only front, which cannot serve it and otherwise delay each connect by up to 3 s. It applies to all the relays or none.")
             }
 
             Section {
