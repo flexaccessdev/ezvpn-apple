@@ -15,6 +15,8 @@ struct TunnelProfileForm: Equatable {
     var authKeyID = ""
     var relayURLs = ""
     var relayAuthToken = ""
+    /// On by default, as in the core; only custom relays can turn it off.
+    var relayQuicAddrDiscovery = true
     var routes = ""
     var routes6 = ""
     var dnsServers = ""
@@ -28,10 +30,17 @@ struct TunnelProfileForm: Equatable {
         authKeyID = profile.authKeyID
         relayURLs = profile.relayURLs.joined(separator: ", ")
         self.relayAuthToken = relayAuthToken
+        relayQuicAddrDiscovery = profile.relayQuicAddrDiscovery
         routes = profile.routes.joined(separator: ", ")
         routes6 = profile.routes6.joined(separator: ", ")
         dnsServers = profile.dnsServers.joined(separator: ", ")
         dnsMatchDomains = profile.dnsMatchDomains.joined(separator: ", ")
+    }
+
+    /// Whether the relay URLs field holds at least one URL, parsed as Save
+    /// parses it (so a stray comma is not a relay).
+    var hasCustomRelays: Bool {
+        !Self.splitCSV(relayURLs).isEmpty
     }
 
     var hasRequiredFields: Bool {
@@ -71,6 +80,11 @@ struct TunnelProfileForm: Equatable {
         if !relayToken.isEmpty, relayURLList.isEmpty {
             throw TunnelProfileFormError.relayTokenWithoutRelays
         }
+        // Likewise for QUIC address discovery: the default relays serve it, and
+        // the core refuses the setting without custom relays.
+        if !relayQuicAddrDiscovery, relayURLList.isEmpty {
+            throw TunnelProfileFormError.quicAddrDiscoveryOffWithoutRelays
+        }
 
         return TunnelProfileSubmission(
             profile: TunnelProfile(
@@ -79,6 +93,7 @@ struct TunnelProfileForm: Equatable {
                 serverNodeID: Self.trimmed(serverNodeID),
                 authKeyID: Self.trimmed(authKeyID),
                 relayURLs: relayURLList,
+                relayQuicAddrDiscovery: relayQuicAddrDiscovery,
                 routes: Self.splitCSV(routes),
                 routes6: Self.splitCSV(routes6),
                 dnsServers: dnsServerList,
@@ -114,12 +129,15 @@ enum TunnelProfileFormError: LocalizedError, Equatable {
     case missingRequiredFields
     case invalidDNS(String)
     case relayTokenWithoutRelays
+    case quicAddrDiscoveryOffWithoutRelays
 
     var errorDescription: String? {
         switch self {
         case .missingRequiredFields: "Name, server node id, and auth key are required."
         case .invalidDNS(let message): message
         case .relayTokenWithoutRelays: "A relay token requires at least one relay URL."
+        case .quicAddrDiscoveryOffWithoutRelays:
+            "QUIC address discovery can only be turned off with at least one relay URL."
         }
     }
 }

@@ -71,6 +71,42 @@ final class TunnelProfileFormTests: XCTestCase {
         }
     }
 
+    func testQuicAddrDiscoveryDefaultsOn() throws {
+        let profile = try requiredForm().makeSubmission(id: UUID(), includesDNS: false).profile
+
+        XCTAssertTrue(profile.relayQuicAddrDiscovery)
+    }
+
+    func testMakeSubmissionTurnsQuicAddrDiscoveryOffWithSingleRelay() throws {
+        var form = requiredForm()
+        form.relayURLs = "https://relay.one"
+        form.relayQuicAddrDiscovery = false
+
+        let profile = try form.makeSubmission(id: UUID(), includesDNS: false).profile
+
+        XCTAssertEqual(profile.relayURLs, ["https://relay.one"])
+        XCTAssertFalse(profile.relayQuicAddrDiscovery)
+    }
+
+    func testHasCustomRelaysParsesLikeSave() {
+        var form = requiredForm()
+        XCTAssertFalse(form.hasCustomRelays)
+        form.relayURLs = " , ,\n "
+        XCTAssertFalse(form.hasCustomRelays)
+        form.relayURLs = ", https://relay.one"
+        XCTAssertTrue(form.hasCustomRelays)
+    }
+
+    func testMakeSubmissionRejectsQuicAddrDiscoveryOffWithoutRelays() {
+        var form = requiredForm()
+        form.relayURLs = " , "
+        form.relayQuicAddrDiscovery = false
+
+        XCTAssertThrowsError(try form.makeSubmission(id: UUID(), includesDNS: false)) { error in
+            XCTAssertEqual(error as? TunnelProfileFormError, .quicAddrDiscoveryOffWithoutRelays)
+        }
+    }
+
     func testMakeSubmissionNormalizesAndValidatesDNS() throws {
         var form = requiredForm()
         form.dnsServers = " 10.0.0.53, fd00::53 "
@@ -124,6 +160,7 @@ final class TunnelProfileFormTests: XCTestCase {
             serverNodeID: "node",
             authKeyID: "key-1",
             relayURLs: ["relay-1", "relay-2"],
+            relayQuicAddrDiscovery: false,
             routes: ["10.0.0.0/8"],
             routes6: ["fd00::/8"],
             dnsServers: ["10.0.0.53"],
@@ -136,6 +173,7 @@ final class TunnelProfileFormTests: XCTestCase {
         XCTAssertEqual(form.serverNodeID, "node")
         XCTAssertEqual(form.authKeyID, "key-1")
         XCTAssertEqual(form.relayURLs, "relay-1, relay-2")
+        XCTAssertFalse(form.relayQuicAddrDiscovery)
         XCTAssertEqual(form.routes, "10.0.0.0/8")
         XCTAssertEqual(form.routes6, "fd00::/8")
         XCTAssertEqual(form.dnsServers, "10.0.0.53")

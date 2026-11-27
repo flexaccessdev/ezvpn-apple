@@ -23,6 +23,12 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
     /// re-selects and the UI names the key by.
     public var authKeyID: String
     public var relayURLs: [String]
+    /// Whether the custom relays serve QUIC address discovery, all of them or
+    /// none. On by default; turn it off for relays behind a Cloudflare Tunnel
+    /// or another HTTP-only front, which otherwise delay each connect by up to
+    /// 3 s. Only meaningful with `relayURLs`: the core rejects the setting with
+    /// the default relays, so the extension forwards it only then.
+    public var relayQuicAddrDiscovery: Bool
     /// IPv4 private CIDRs to route through the tunnel (split tunnel).
     public var routes: [String]
     /// IPv6 CIDRs to route through the tunnel (split tunnel).
@@ -40,6 +46,7 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
         serverNodeID: String,
         authKeyID: String,
         relayURLs: [String],
+        relayQuicAddrDiscovery: Bool,
         routes: [String],
         routes6: [String],
         dnsServers: [String],
@@ -50,6 +57,7 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
         self.serverNodeID = serverNodeID
         self.authKeyID = authKeyID
         self.relayURLs = relayURLs
+        self.relayQuicAddrDiscovery = relayQuicAddrDiscovery
         self.routes = routes
         self.routes6 = routes6
         self.dnsServers = dnsServers
@@ -58,8 +66,8 @@ public struct TunnelProfile: Equatable, Identifiable, Sendable {
 }
 
 /// Keys used in the `NETunnelProviderProtocol.providerConfiguration` plist
-/// dictionary. `serverNodeID`/`relayURLs`/`routes`/`routes6`/
-/// `dnsServers`/`dnsMatchDomains` are the keys the PacketTunnel extension
+/// dictionary. `serverNodeID`/`relayURLs`/`relayQuicAddrDiscovery`/`routes`/
+/// `routes6`/`dnsServers`/`dnsMatchDomains` are the keys the PacketTunnel extension
 /// reads — do not rename them without updating
 /// `PacketTunnelProvider.startTunnel`. `profileID`/`name`/`authKeyID` are
 /// additive and ignored by the extension.
@@ -75,6 +83,7 @@ public enum ProviderConfigKey {
     public static let serverNodeID = "server_node_id"
     public static let authKeyID = "auth_key_id"
     public static let relayURLs = "relay_urls"
+    public static let relayQuicAddrDiscovery = "relay_quic_addr_discovery"
     public static let routes = "routes"
     public static let routes6 = "routes6"
     public static let dnsServers = "dns_servers"
@@ -96,6 +105,7 @@ public extension TunnelProfile {
             ProviderConfigKey.serverNodeID: serverNodeID,
             ProviderConfigKey.authKeyID: authKeyID,
             ProviderConfigKey.relayURLs: relayURLs,
+            ProviderConfigKey.relayQuicAddrDiscovery: relayQuicAddrDiscovery,
             ProviderConfigKey.routes: routes,
             ProviderConfigKey.routes6: routes6,
             ProviderConfigKey.dnsServers: dnsServers,
@@ -118,6 +128,8 @@ public extension TunnelProfile {
             serverNodeID: conf[ProviderConfigKey.serverNodeID] as? String ?? "",
             authKeyID: conf[ProviderConfigKey.authKeyID] as? String ?? "",
             relayURLs: conf[ProviderConfigKey.relayURLs] as? [String] ?? [],
+            // Absent means the core's default, on.
+            relayQuicAddrDiscovery: conf[ProviderConfigKey.relayQuicAddrDiscovery] as? Bool ?? true,
             routes: conf[ProviderConfigKey.routes] as? [String] ?? [],
             routes6: conf[ProviderConfigKey.routes6] as? [String] ?? [],
             dnsServers: conf[ProviderConfigKey.dnsServers] as? [String] ?? [],
